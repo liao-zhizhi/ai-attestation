@@ -1,0 +1,16 @@
+schema: ata-compliance-template-v1
+id: us_ai_executive_order
+name: 美国 AI 行政令 · 安全评估与红队
+description: 面向安全评估、红队测试与事件报告的检查项（技术验证工具，非法务意见）。
+version: 0.1.0
+source: open
+groups:
+- api_trail_30d
+- hash_chain
+- failures_audited
+- body_hashes
+- safety_assessment
+- red_team_eval
+- incident_reporting
+- capability_disclosure
+- usage_limits

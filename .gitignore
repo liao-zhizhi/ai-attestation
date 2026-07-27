@@ -1,0 +1,15 @@
+# Runtime / build artifacts — do not commit
+node_modules/
+.next/
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+data/
+*.db
+reports/
+tsconfig.tsbuildinfo
+compliance-templates/_drafts/*.yaml
+!compliance-templates/_drafts/README.md
+.env
+.env.*

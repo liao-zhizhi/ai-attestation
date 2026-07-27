@@ -1,0 +1,17 @@
+schema: ata-compliance-template-v1
+id: cn_genai_measures
+name: 中国生成式 AI 服务管理办法
+description: 备案、数据安全评估与内容审核相关检查项（技术验证工具，非法务意见）。
+version: 0.1.0
+source: open
+groups:
+- api_trail_30d
+- hash_chain
+- model_recorded
+- cn_filing
+- cn_data_security_eval
+- cn_content_moderation
+- cn_user_realname
+- user_data_training
+- training_data
+- capability_disclosure

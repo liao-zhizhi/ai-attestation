@@ -1,0 +1,18 @@
+schema: ata-compliance-template-v1
+id: eu_ai_act_transparency
+name: 欧盟 AI 法案 · 透明度条款
+description: 透明度相关要求可执行检查清单。
+version: 0.2.0
+source: open
+groups:
+- api_trail_30d
+- hash_chain
+- endpoint_recorded
+- model_recorded
+- cost_recorded
+- failures_audited
+- body_hashes
+- capability_disclosure
+- training_data
+- user_data_training
+- usage_limits

@@ -1,0 +1,16 @@
+schema: ata-compliance-template-v1
+id: iso_iec_42001
+name: ISO/IEC 42001 · AI 管理系统
+description: AI 治理、风险评估与持续改进检查项（映射到可审计证据）。
+version: 0.1.0
+source: open
+groups:
+- api_trail_30d
+- hash_chain
+- iso_governance
+- iso_risk_assessment
+- iso_continual_improvement
+- iso_supplier
+- safety_assessment
+- user_data_training
+- capability_disclosure

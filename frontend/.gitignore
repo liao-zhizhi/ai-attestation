@@ -1,0 +1,4 @@
+# ai-attestation frontend
+.next
+node_modules
+.env*.local

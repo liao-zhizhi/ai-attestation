@@ -1,0 +1,17 @@
+schema: ata-compliance-template-v1
+id: soc2_type_ii_ai
+name: SOC 2 Type II · AI 服务适用部分
+description: 安全、可用性、处理完整性、保密性、隐私（AI API 服务子集）。
+version: 0.1.0
+source: open
+groups:
+- soc2_security
+- soc2_availability
+- soc2_processing_integrity
+- soc2_confidentiality
+- soc2_privacy
+- api_trail_30d
+- hash_chain
+- cost_recorded
+- body_hashes
+- user_data_training

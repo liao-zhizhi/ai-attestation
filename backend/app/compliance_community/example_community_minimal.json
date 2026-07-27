@@ -1,0 +1,7 @@
+{
+  "id": "example_community_minimal",
+  "name": "社区示例 · 最小标准",
+  "description": "演示社区 JSON 贡献格式；可删除。仅含共享审计链相关项。",
+  "version": "0.0.1",
+  "groups": ["api_trail_30d", "hash_chain", "body_hashes"]
+}
