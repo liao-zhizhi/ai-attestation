@@ -6,10 +6,11 @@ type Props = {
   proxyUrl: string;
   onSimulate: () => void;
   busy: boolean;
+  canWrite?: boolean;
 };
 
 /** 空状态引导：证据链始于一次连接。 */
-export function EmptyState({ proxyUrl, onSimulate, busy }: Props) {
+export function EmptyState({ proxyUrl, onSimulate, busy, canWrite = true }: Props) {
   const [copied, setCopied] = useState(false);
   const displayProxy = proxyUrl || "http://127.0.0.1:8004/v1/proxy";
 
@@ -59,7 +60,12 @@ client.chat.completions.create(
         <button type="button" onClick={copyProxy}>
           {copied ? "已复制" : "复制代理URL"}
         </button>
-        <button type="button" onClick={onSimulate} disabled={busy}>
+        <button
+          type="button"
+          onClick={onSimulate}
+          disabled={busy || !canWrite}
+          title={!canWrite ? "需要 read_write 或 admin" : undefined}
+        >
           {busy ? "写入中…" : "模拟一条调用"}
         </button>
       </div>

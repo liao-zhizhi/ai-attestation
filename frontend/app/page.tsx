@@ -88,6 +88,8 @@ export default function HomePage() {
   const [detail, setDetail] = useState<ApiCall | null>(null);
   const [proof, setProof] = useState<{ ok: boolean; message?: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [exportingPack, setExportingPack] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -109,6 +111,7 @@ export default function HomePage() {
   const proxyUrl = useMemo(() => (apiBase ? `${apiBase}/v1/proxy` : ""), [apiBase]);
   const canAdmin = role === "admin";
   const canWrite = role === "admin" || role === "read_write";
+  // Hide Settings/Key only after we know the role is read_only (empty = loading/onboarding).
   const showSettings = role !== "read_only";
 
   useEffect(() => {
@@ -222,6 +225,10 @@ export default function HomePage() {
           } else if (meRes.status === 401 || meRes.status === 403) {
             setRole("");
             throw new Error(await parseApiError(meRes, "API Key 无效或权限不足"));
+          } else {
+            // Avoid leaving role="" forever (canWrite stuck false) after dashboard loaded.
+            setRole((prev) => prev || "read_only");
+            setErr(await parseApiError(meRes, "无法确认角色，已按只读处理"));
           }
         }
       } catch (e) {
@@ -346,7 +353,7 @@ export default function HomePage() {
 
   async function verifyDetail() {
     if (!detail) return;
-    setBusy(true);
+    setVerifying(true);
     try {
       const r = await fetch(
         withApiKey(`${apiBase}/v1/dashboard/calls/${detail.id}/verify`, apiKey),
@@ -362,7 +369,35 @@ export default function HomePage() {
         message: d.chain_proof?.message,
       });
     } finally {
-      setBusy(false);
+      setVerifying(false);
+    }
+  }
+
+  async function exportVerifyPack() {
+    if (!detail || !apiKey) return;
+    setExportingPack(true);
+    setErr(null);
+    try {
+      const r = await fetch(
+        withApiKey(`${apiBase}/v1/reports/${encodeURIComponent(detail.id)}/export`, apiKey)
+      );
+      if (!r.ok) {
+        setErr(await parseApiError(r, "导出验证包失败"));
+        return;
+      }
+      const blob = await r.blob();
+      const cd = r.headers.get("Content-Disposition") || "";
+      const m = /filename="?([^"]+)"?/i.exec(cd);
+      const name = m?.[1] || `ata_call_${detail.id}_verify.zip`;
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "导出验证包失败");
+    } finally {
+      setExportingPack(false);
     }
   }
 
@@ -464,6 +499,7 @@ export default function HomePage() {
               onChange={setFilters}
               onQuery={() => runQuery()}
               busy={queryBusy}
+              canWrite={canWrite}
             />
             <QueryHistory items={history} onReplay={replayHistory} activeId={queryId} />
             <QueryResults
@@ -492,7 +528,12 @@ export default function HomePage() {
               onOpenAttestation={() => setNav("attestation")}
             />
             {showEmpty ? (
-              <EmptyState proxyUrl={proxyUrl} onSimulate={simulate} busy={busy} />
+              <EmptyState
+                proxyUrl={proxyUrl}
+                onSimulate={simulate}
+                busy={busy}
+                canWrite={canWrite}
+              />
             ) : (
               <>
                 <TrendCharts series={series} vendors={vendors} />
@@ -506,7 +547,12 @@ export default function HomePage() {
         {nav === "calls" && (
           <>
             {showEmpty ? (
-              <EmptyState proxyUrl={proxyUrl} onSimulate={simulate} busy={busy} />
+              <EmptyState
+                proxyUrl={proxyUrl}
+                onSimulate={simulate}
+                busy={busy}
+                canWrite={canWrite}
+              />
             ) : (
               <>
                 <Timeline calls={calls} selectedId={selectedId} onSelect={openDetail} />
@@ -590,8 +636,10 @@ export default function HomePage() {
         <CallDetail
           call={detail}
           proof={proof}
-          verifying={busy}
+          verifying={verifying}
+          exporting={exportingPack}
           onVerify={verifyDetail}
+          onExport={exportVerifyPack}
           onClose={() => {
             setDetail(null);
             setSelectedId(null);

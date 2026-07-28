@@ -8,11 +8,21 @@ type Props = {
   call: ApiCall | null;
   proof: Proof | null;
   verifying: boolean;
+  exporting?: boolean;
   onVerify: () => void;
+  onExport?: () => void;
   onClose: () => void;
 };
 
-export function CallDetail({ call, proof, verifying, onVerify, onClose }: Props) {
+export function CallDetail({
+  call,
+  proof,
+  verifying,
+  exporting,
+  onVerify,
+  onExport,
+  onClose,
+}: Props) {
   if (!call) return null;
   return (
     <div className="backdrop" onClick={onClose} role="presentation">
@@ -49,6 +59,16 @@ export function CallDetail({ call, proof, verifying, onVerify, onClose }: Props)
           <button type="button" className="primary" onClick={onVerify} disabled={verifying}>
             {verifying ? "验证中…" : "验证完整性"}
           </button>
+          {onExport && (
+            <button
+              type="button"
+              className="primary"
+              onClick={onExport}
+              disabled={exporting || verifying}
+            >
+              {exporting ? "导出中…" : "导出验证包"}
+            </button>
+          )}
           {proof && (
             <span className={proof.ok ? "ok" : "bad"}>
               {proof.ok ? "✓ " : "✗ "}
@@ -80,23 +100,16 @@ export function CallDetail({ call, proof, verifying, onVerify, onClose }: Props)
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 14px;
+            margin-bottom: 12px;
           }
           h3 {
             margin: 0;
             font-size: 16px;
           }
-          h4 {
-            margin: 16px 0 8px;
-            font-size: 12px;
-            color: #7f8fa3;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-          }
           .x {
             background: transparent;
             border: none;
-            color: #7f8fa3;
+            color: #9eb2c7;
             font-size: 22px;
             line-height: 1;
           }
@@ -113,6 +126,7 @@ export function CallDetail({ call, proof, verifying, onVerify, onClose }: Props)
             display: flex;
             align-items: center;
             gap: 14px;
+            flex-wrap: wrap;
           }
           .primary {
             background: #1a3d2c;
@@ -152,24 +166,31 @@ function Field({
   mono?: boolean;
 }) {
   return (
-    <div className="f">
-      <div className="l">{label}</div>
-      <div className={mono ? "v mono" : "v"}>{value}</div>
+    <div className={mono ? "field mono" : "field"}>
+      <div className="lab">{label}</div>
+      <div className="val">{value}</div>
       <style jsx>{`
-        .l {
-          font-size: 11px;
+        .field {
+          background: #0e141c;
+          border: 1px solid #1e2a38;
+          border-radius: 4px;
+          padding: 8px 10px;
+        }
+        .lab {
+          font-size: 10px;
           color: #7f8fa3;
           text-transform: uppercase;
-          letter-spacing: 0.04em;
+          margin-bottom: 4px;
         }
-        .v {
-          margin-top: 3px;
-          font-size: 13px;
+        .val {
+          font-size: 12px;
+          color: #d7e0ea;
           word-break: break-all;
         }
-        .mono {
+        .mono .val {
           font-family: var(--mono);
-          font-size: 12px;
+          font-size: 11px;
+          color: #3dd68c;
         }
       `}</style>
     </div>

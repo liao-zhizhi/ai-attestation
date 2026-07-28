@@ -37,18 +37,17 @@ print(resp.choices[0].message.content)`;
 
   return (
     <section className="ug">
-      <h2>新手操作手册（三步上手）</h2>
+      <h2>新手操作手册（上手指南）</h2>
       <p className="lead">
         左侧菜单从上到下是：操作手册 → 仪表盘 → API 调用记录 → 合规管理 → 行为监控 →
-        防篡改证明 → 设置 → Key；最底下有「复制代理 URL」。按三步走即可。
+        防篡改证明 → 设置 → Key；最底下有「复制代理 URL」。按下面步骤走即可。
       </p>
 
       <pre className="flow" aria-label="用户流程图">
-{`┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│  第一步      │    │  第二步      │    │  第三步      │
-│  点左侧 Key  │ →  │  点左侧 设置 │ →  │  写代码调用  │
-│  创建+复制    │    │  填 Key 保存 │    │  见证生效    │
-└─────────────┘    └─────────────┘    └─────────────┘`}
+{`┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────────┐
+│ ① Key    │ → │ ② 设置   │ → │ ③ 调用   │ → │ ④ 导出验证包 │
+│ 创建 ata_ │   │ 填入保存  │   │ 写代码   │   │ 调用详情底部 │
+└──────────┘   └──────────┘   └──────────┘   └──────────────┘`}
       </pre>
 
       <ol className="steps">
@@ -143,6 +142,63 @@ print(resp.choices[0].message.content)`;
             （需要当前角色为 <code>read_write</code> 或 <code>admin</code>）先写入一条演示数据。
           </p>
         </li>
+        <li>
+          <h3>第四步：导出验证包（可选）</h3>
+          <p>
+            需要把某次调用的证据带离线、给别人复核时，用这个功能（不依赖服务器也能打开校验页）。
+          </p>
+          <ol className="sub">
+            <li>
+              打开左侧 <strong>「仪表盘」</strong> 或 <strong>「API 调用记录」</strong>
+            </li>
+            <li>
+              在列表里<strong>点开一条调用</strong>，弹出标题为 <strong>「调用详情」</strong> 的窗口
+            </li>
+            <li>
+              在窗口底部，<strong>「验证完整性」</strong> 按钮旁边，点{" "}
+              <strong>「导出验证包」</strong>
+            </li>
+            <li>
+              浏览器会下载一个 ZIP（文件名类似{" "}
+              <code>ata_call_…_verify.zip</code>）
+            </li>
+          </ol>
+          <p>解压后目录里有：</p>
+          <ul>
+            <li>
+              <code>call.json</code> — 该次调用的见证字段（时间、端点、哈希等；
+              <strong>不含</strong>请求/响应原文）
+            </li>
+            <li>
+              <code>chain.json</code> — 邻接哈希链片段
+            </li>
+            <li>
+              <code>verification.json</code> — 导出时服务端的校验结果
+            </li>
+            <li>
+              <code>verify.html</code> — 纯前端离线校验页
+            </li>
+            <li>
+              <code>README.txt</code> — 使用说明
+            </li>
+          </ul>
+          <p>离线验证步骤：</p>
+          <ol className="sub">
+            <li>解压 ZIP 到任意文件夹</li>
+            <li>
+              在该文件夹打开终端，执行：<code>python -m http.server 8765</code>
+            </li>
+            <li>
+              浏览器打开 <code>http://127.0.0.1:8765/verify.html</code>
+            </li>
+            <li>
+              点页面上的 <strong>「运行本地验证」</strong>
+            </li>
+          </ol>
+          <p className="tip">
+            同窗口里的「验证完整性」是连服务器当场校验整条链；「导出验证包」是下载 ZIP，方便离线或交给第三方复核。
+          </p>
+        </li>
       </ol>
 
       <h3>常见问题 Q&amp;A</h3>
@@ -163,6 +219,17 @@ print(resp.choices[0].message.content)`;
           「Authorization」只是备忘，填了也不会单独让仪表盘生效。
           写代码时：<code>api_key</code> 用上游 <code>sk-</code>，
           <code>X-Attest-Key</code> 用 <code>ata_</code>，不要填反。
+        </dd>
+        <dt>问：找不到「导出验证包」按钮？</dt>
+        <dd>
+          答：该按钮在<strong>调用详情弹窗底部</strong>，紧挨「验证完整性」。
+          请先到「仪表盘」或「API 调用记录」点开某一条调用；没产生调用时可先点右上角「模拟一条调用」。
+        </dd>
+        <dt>问：导出的 ZIP 里为什么没有请求原文？</dt>
+        <dd>
+          答：系统设计为请求/响应正文只算哈希、不落库。验证包用{" "}
+          <code>request_hash</code> / <code>response_hash</code> /{" "}
+          <code>chain_hash</code> 做见证，可离线复核链接是否被篡改。
         </dd>
         <dt>问：右上角「模拟一条调用」点不了？</dt>
         <dd>

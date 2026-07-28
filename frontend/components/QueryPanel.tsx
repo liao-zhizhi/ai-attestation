@@ -19,9 +19,18 @@ type Props = {
   onChange: (next: QueryFilters) => void;
   onQuery: () => void;
   busy: boolean;
+  canWrite?: boolean;
 };
 
-export function QueryPanel({ open, onToggle, filters, onChange, onQuery, busy }: Props) {
+export function QueryPanel({
+  open,
+  onToggle,
+  filters,
+  onChange,
+  onQuery,
+  busy,
+  canWrite = true,
+}: Props) {
   function set<K extends keyof QueryFilters>(key: K, value: QueryFilters[K]) {
     onChange({ ...filters, [key]: value });
   }
@@ -141,7 +150,13 @@ export function QueryPanel({ open, onToggle, filters, onChange, onQuery, busy }:
                 <option value="timeout">超时</option>
               </select>
             </label>
-            <button type="button" className="run" onClick={onQuery} disabled={busy}>
+            <button
+              type="button"
+              className="run"
+              onClick={onQuery}
+              disabled={busy || !canWrite}
+              title={!canWrite ? "需要 read_write 或 admin" : undefined}
+            >
               {busy ? "查询中…" : "查询"}
             </button>
           </div>

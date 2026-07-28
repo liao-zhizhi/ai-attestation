@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { parseApiError } from "@/lib/api";
 
 type Props = {
   apiBase: string;
@@ -37,7 +38,7 @@ export function ExportDialog({ apiBase, apiKey, open, onClose }: Props) {
         if (customTo) q.set("custom_to", customTo);
       }
       const r = await fetch(`${apiBase}/v1/dashboard/calls/export?${q.toString()}`);
-      if (!r.ok) throw new Error("export failed");
+      if (!r.ok) throw new Error(await parseApiError(r, "导出失败"));
       const blob = await r.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");

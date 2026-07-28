@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { formatDetail, withApiKey } from "@/lib/api";
 
 type SubTab = "general" | "reports";
 
@@ -52,7 +53,7 @@ export function SettingsPanel({
   const loadSub = useCallback(async () => {
     if (!apiKey) return;
     const r = await fetch(
-      `${apiBase}/v1/dashboard/settings/report-subscription?api_key=${encodeURIComponent(apiKey)}`
+      withApiKey(`${apiBase}/v1/dashboard/settings/report-subscription`, apiKey)
     );
     if (!r.ok) return;
     const d = await r.json();
@@ -105,14 +106,7 @@ export function SettingsPanel({
     );
     const d = await r.json().catch(() => ({}));
     if (!r.ok) {
-      const detail = d.detail;
-      setSubMsg(
-        typeof detail === "string"
-          ? detail
-          : detail != null
-            ? JSON.stringify(detail)
-            : "发送失败，请先保存订阅"
-      );
+      setSubMsg(formatDetail(d.detail, "发送失败，请先保存订阅"));
       return;
     }
     setSubMsg(d.message || "已排队");

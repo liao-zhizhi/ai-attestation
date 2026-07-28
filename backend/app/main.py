@@ -99,6 +99,7 @@ from verify_offline import (
     build_chain_path,
     build_notarization_request,
     build_offline_zip,
+    build_call_offline_zip,
     compliance_badge_svg,
 )
 from behavior import (
@@ -444,6 +445,36 @@ def dashboard_call_detail(call_id: str, api_key: str = Query(..., min_length=8))
     if not row or row.get("api_key") != api_key:
         raise HTTPException(404, "call not found")
     return {"call": row, "proof": verify_single_call(row)}
+
+
+@app.get("/v1/reports/{report_id}/export")
+def export_call_verify_pack(
+    report_id: str, api_key: str = Depends(resolve_api_key)
+) -> Response:
+    """Offline ZIP for one API call (report_id == call.id).
+
+    Contains call.json + chain.json + verification.json + verify.html + README.txt.
+    Raw request/response bodies are never included (hashes only).
+    """
+    require_key(api_key, min_role="read_only", db_path=DB_PATH)
+    row = get_call(report_id, db_path=DB_PATH)
+    if not row or row.get("api_key") != api_key:
+        raise HTTPException(404, "call not found")
+    verification = verify_single_call(row)
+    zbytes = build_call_offline_zip(
+        call=row,
+        verification=verification,
+        api_key=api_key,
+        db_path=DB_PATH,
+    )
+    safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in report_id)[:64]
+    return Response(
+        content=zbytes,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="ata_call_{safe_id}_verify.zip"'
+        },
+    )
 
 
 class SimulateBody(BaseModel):

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { parseApiError, withApiKey } from "@/lib/api";
 import { BaselineCompare } from "./BaselineCompare";
 import { BaselinePanel, type Baseline } from "./BaselinePanel";
 import { DriftMarksList, type DriftMark } from "./DriftMarksList";
@@ -137,10 +138,13 @@ export function BehaviorTab({ apiBase, apiKey, onOpenCall, onChainUpdated }: Pro
     setBusy(true);
     try {
       const r = await fetch(
-        `${apiBase}/v1/dashboard/behavior/baselines/${encodeURIComponent(id)}?api_key=${encodeURIComponent(apiKey)}`,
+        withApiKey(
+          `${apiBase}/v1/dashboard/behavior/baselines/${encodeURIComponent(id)}`,
+          apiKey
+        ),
         { method: "DELETE" }
       );
-      if (!r.ok) throw new Error("delete baseline failed");
+      if (!r.ok) throw new Error(await parseApiError(r, "删除基线失败"));
       await loadBaselines();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "delete failed");
