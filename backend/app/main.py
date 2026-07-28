@@ -1111,7 +1111,7 @@ def custom_templates_import(body: CustomYamlBody) -> Dict[str, Any]:
 def custom_templates_delete(
     template_id: str, api_key: str = Query(..., min_length=8)
 ) -> Dict[str, Any]:
-    require_key(api_key, min_role="read_only", db_path=DB_PATH)
+    require_key(api_key, min_role="read_write", db_path=DB_PATH)
     ok = delete_custom_template(api_key, template_id)
     if not ok:
         raise HTTPException(404, "template not found")
@@ -1122,7 +1122,7 @@ def custom_templates_delete(
 def custom_templates_publish(
     template_id: str, api_key: str = Query(..., min_length=8)
 ) -> Dict[str, Any]:
-    require_key(api_key, min_role="read_only", db_path=DB_PATH)
+    require_key(api_key, min_role="read_write", db_path=DB_PATH)
     try:
         return publish_draft(api_key, template_id)
     except ValueError as e:

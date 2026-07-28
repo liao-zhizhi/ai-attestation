@@ -2,7 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { resolveApiBase } from "@/lib/apiBase";
+import { resolveApiBase } from "@/lib/api";
+
+function envApiBase(): string {
+  return (
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE ||
+    "http://127.0.0.1:8004"
+  ).replace(/\/$/, "");
+}
 
 
 type Verification = {
@@ -62,7 +70,7 @@ export default function VerifyClient() {
   const reportHash = String(params?.report_hash || "");
   const token = search.get("p") || "";
 
-  const [apiBase, setApiBase] = useState("http://127.0.0.1:8004");
+  const [apiBase, setApiBase] = useState(envApiBase);
   const [pack, setPack] = useState<Pack | null>(null);
   const [verification, setVerification] = useState<Verification | null>(null);
   const [err, setErr] = useState<string | null>(null);

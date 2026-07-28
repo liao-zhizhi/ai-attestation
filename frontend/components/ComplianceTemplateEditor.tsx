@@ -176,11 +176,15 @@ export function ComplianceTemplateEditor({ apiBase, apiKey, onChanged }: Props) 
   }
 
   async function pin(id: string, version: string | null) {
-    await fetch(`${apiBase}/v1/dashboard/compliance/templates/pin`, {
+    const r = await fetch(`${apiBase}/v1/dashboard/compliance/templates/pin`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ api_key: apiKey, template_id: id, version }),
     });
+    if (!r.ok) {
+      setErr(await r.text());
+      return;
+    }
     setMsg(version ? `已固定 ${id}@${version}` : `已跟随最新 ${id}`);
     await reload();
   }

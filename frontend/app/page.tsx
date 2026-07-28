@@ -17,10 +17,18 @@ import { ExportDialog } from "@/components/ExportDialog";
 import { Timeline, type ApiCall } from "@/components/Timeline";
 import { TrendCharts, type DayPoint, type VendorSlice } from "@/components/TrendCharts";
 import { UserGuide } from "@/components/UserGuide";
-import { resolveApiBase } from "@/lib/apiBase";
+import { resolveApiBase, parseApiError, formatDetail, withApiKey } from "@/lib/api";
 
 const STORAGE_KEY = "ata_mvp_api_key";
 const AUTH_STORAGE_KEY = "ata_mvp_authorization";
+
+function envApiBase(): string {
+  return (
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE ||
+    "http://127.0.0.1:8004"
+  ).replace(/\/$/, "");
+}
 
 const DEFAULT_FILTERS: QueryFilters = {
   time_range: "7d",
@@ -45,7 +53,9 @@ const VENDOR_COLORS = [
 
 export default function HomePage() {
   const [nav, setNav] = useState<NavId>("guide");
-  const [apiBase, setApiBase] = useState("http://127.0.0.1:8004");
+  // Start from build-time env; resolveApiBase() corrects remote→localhost mistakes after mount.
+  const [apiBase, setApiBase] = useState(envApiBase);
+  const [apiReady, setApiReady] = useState(false);
   const [apiKey, setApiKey] = useState("");
   const [authorization, setAuthorization] = useState("");
   const [calls, setCalls] = useState<ApiCall[]>([]);
@@ -93,18 +103,21 @@ export default function HomePage() {
   const [callsHasMore, setCallsHasMore] = useState(false);
   const [series, setSeries] = useState<DayPoint[]>([]);
   const [vendors, setVendors] = useState<VendorSlice[]>([]);
-  const [role, setRole] = useState("read_write");
+  const [role, setRole] = useState("");
   const [exportOpen, setExportOpen] = useState(false);
 
-  const proxyUrl = useMemo(() => `${apiBase}/v1/proxy`, [apiBase]);
+  const proxyUrl = useMemo(() => (apiBase ? `${apiBase}/v1/proxy` : ""), [apiBase]);
   const canAdmin = role === "admin";
+  const canWrite = role === "admin" || role === "read_write";
   const showSettings = role !== "read_only";
 
   useEffect(() => {
     setApiBase(resolveApiBase());
+    setApiReady(true);
   }, []);
 
   useEffect(() => {
+    if (!apiReady || !apiBase) return;
     const saved = localStorage.getItem(STORAGE_KEY);
     const savedAuth = localStorage.getItem(AUTH_STORAGE_KEY);
     if (savedAuth) setAuthorization(savedAuth);
@@ -120,11 +133,11 @@ export default function HomePage() {
         })
         .catch(() => undefined);
     }
-  }, [apiBase]);
+  }, [apiReady, apiBase]);
 
   const refresh = useCallback(
     async (key: string, opts?: { append?: boolean; offset?: number }) => {
-      if (!key || key.length < 8) return;
+      if (!apiBase || !key || key.length < 8) return;
       const append = opts?.append ?? false;
       const offset = opts?.offset ?? 0;
       setErr(null);
@@ -132,18 +145,26 @@ export default function HomePage() {
         const limit = 100;
         const [cRes, aRes, hRes, oRes, meRes] = await Promise.all([
           fetch(
-            `${apiBase}/v1/dashboard/calls?api_key=${encodeURIComponent(key)}&limit=${limit}&offset=${offset}`
+            withApiKey(
+              `${apiBase}/v1/dashboard/calls?limit=${limit}&offset=${offset}`,
+              key
+            )
           ),
-          fetch(`${apiBase}/v1/dashboard/attestation?api_key=${encodeURIComponent(key)}`),
-          fetch(`${apiBase}/v1/dashboard/query-history?api_key=${encodeURIComponent(key)}&limit=20`),
+          fetch(withApiKey(`${apiBase}/v1/dashboard/attestation`, key)),
+          fetch(
+            withApiKey(`${apiBase}/v1/dashboard/query-history?limit=20`, key)
+          ),
           append
             ? Promise.resolve(null)
-            : fetch(`${apiBase}/v1/dashboard/overview?api_key=${encodeURIComponent(key)}`),
+            : fetch(withApiKey(`${apiBase}/v1/dashboard/overview`, key)),
           append
             ? Promise.resolve(null)
-            : fetch(`${apiBase}/v1/dashboard/me?api_key=${encodeURIComponent(key)}`),
+            : fetch(withApiKey(`${apiBase}/v1/dashboard/me`, key)),
         ]);
-        if (!cRes.ok || !aRes.ok) throw new Error("dashboard fetch failed");
+        if (!cRes.ok || !aRes.ok) {
+          const failed = !cRes.ok ? cRes : aRes;
+          throw new Error(await parseApiError(failed, "仪表盘加载失败"));
+        }
         const cJson = await cRes.json();
         const aJson = await aRes.json();
         const batch: ApiCall[] = cJson.calls || [];
@@ -194,9 +215,14 @@ export default function HomePage() {
           setTodayCallsN(Number(o.today_calls || 0));
           setTodayCostN(Number(o.today_cost || 0));
         }
-        if (meRes && meRes.ok) {
-          const me = await meRes.json();
-          setRole(me.me?.role || "read_write");
+        if (meRes) {
+          if (meRes.ok) {
+            const me = await meRes.json();
+            setRole(me.me?.role || "read_write");
+          } else if (meRes.status === 401 || meRes.status === 403) {
+            setRole("");
+            throw new Error(await parseApiError(meRes, "API Key 无效或权限不足"));
+          }
         }
       } catch (e) {
         setErr(e instanceof Error ? e.message : "load failed");
@@ -212,8 +238,8 @@ export default function HomePage() {
   }, [role, nav]);
 
   useEffect(() => {
-    if (apiKey) refresh(apiKey);
-  }, [apiKey, refresh]);
+    if (apiReady && apiBase && apiKey) refresh(apiKey);
+  }, [apiReady, apiBase, apiKey, refresh]);
 
   async function onSaveKey() {
     localStorage.setItem(STORAGE_KEY, apiKey.trim());
@@ -222,7 +248,7 @@ export default function HomePage() {
   }
 
   async function simulate() {
-    if (!apiKey) return;
+    if (!apiKey || !canWrite) return;
     setBusy(true);
     try {
       const r = await fetch(`${apiBase}/v1/demo/simulate`, {
@@ -231,14 +257,7 @@ export default function HomePage() {
         body: JSON.stringify({ api_key: apiKey }),
       });
       if (!r.ok) {
-        let detail = "模拟调用失败";
-        try {
-          const d = await r.json();
-          if (typeof d.detail === "string") detail = d.detail;
-        } catch {
-          /* ignore */
-        }
-        setErr(detail);
+        setErr(await parseApiError(r, "模拟调用失败"));
         return;
       }
       await refresh(apiKey);
@@ -263,7 +282,7 @@ export default function HomePage() {
   }
 
   async function runQuery(override?: QueryFilters) {
-    if (!apiKey) return;
+    if (!apiKey || !canWrite) return;
     const f = override || filters;
     setQueryBusy(true);
     try {
@@ -272,7 +291,7 @@ export default function HomePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(filtersToBody(f)),
       });
-      if (!r.ok) throw new Error("query failed");
+      if (!r.ok) throw new Error(await parseApiError(r, "查询失败"));
       const d = await r.json();
       setQueryResults(d.results || []);
       setQueryCount(d.count || 0);
@@ -308,12 +327,10 @@ export default function HomePage() {
     setSelectedId(id);
     setProof(null);
     try {
-      const r = await fetch(
-        `${apiBase}/v1/dashboard/calls/${id}?api_key=${encodeURIComponent(apiKey)}`
-      );
+      const r = await fetch(withApiKey(`${apiBase}/v1/dashboard/calls/${id}`, apiKey));
       const d = await r.json().catch(() => ({}));
       if (!r.ok || !d.call) {
-        setErr(typeof d.detail === "string" ? d.detail : "加载调用详情失败");
+        setErr(formatDetail(d.detail, "加载调用详情失败"));
         setSelectedId(null);
         setDetail(null);
         return;
@@ -332,9 +349,13 @@ export default function HomePage() {
     setBusy(true);
     try {
       const r = await fetch(
-        `${apiBase}/v1/dashboard/calls/${detail.id}/verify?api_key=${encodeURIComponent(apiKey)}`,
+        withApiKey(`${apiBase}/v1/dashboard/calls/${detail.id}/verify`, apiKey),
         { method: "POST" }
       );
+      if (!r.ok) {
+        setErr(await parseApiError(r, "校验失败"));
+        return;
+      }
       const d = await r.json();
       setProof({
         ok: !!d.chain_proof?.ok,
@@ -356,7 +377,7 @@ export default function HomePage() {
   }
 
   async function anchorChain() {
-    if (!apiKey) return;
+    if (!apiKey || !canWrite) return;
     setAnchoring(true);
     try {
       const r = await fetch(`${apiBase}/v1/dashboard/attestation/anchor`, {
@@ -364,7 +385,7 @@ export default function HomePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ api_key: apiKey }),
       });
-      if (!r.ok) throw new Error("anchor failed");
+      if (!r.ok) throw new Error(await parseApiError(r, "锚定失败"));
       await refresh(apiKey);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "anchor failed");
@@ -412,13 +433,25 @@ export default function HomePage() {
                 导出
               </button>
             )}
-            <button type="button" className="accent" onClick={simulate} disabled={busy}>
+            <button
+              type="button"
+              className="accent"
+              onClick={simulate}
+              disabled={busy || !canWrite || !apiKey}
+              title={!canWrite ? "需要 read_write 或 admin" : undefined}
+            >
               模拟一条调用
             </button>
           </div>
         </header>
 
-        {err && <div className="err">后端不可用：{err}（确认 :8004 已启动）</div>}
+        {err && (
+          <div className="err">
+            {/network|fetch|failed to fetch|后端/i.test(err)
+              ? `后端不可用：${err}（确认 :8004 已启动，且代理 URL 指向正确主机）`
+              : err}
+          </div>
+        )}
 
         {nav === "guide" && <UserGuide proxyUrl={proxyUrl} />}
 
@@ -540,7 +573,7 @@ export default function HomePage() {
             apiBase={apiBase}
             apiKey={apiKey}
             canAdmin={canAdmin}
-            onCreated={(k) => {
+            onActivateKey={(k) => {
               setApiKey(k);
               localStorage.setItem(STORAGE_KEY, k);
             }}

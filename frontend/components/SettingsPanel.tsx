@@ -152,7 +152,7 @@ export function SettingsPanel({
             />
           </label>
           <label>
-            Authorization（上游厂商 Key）
+            Authorization（上游厂商 Key，仅本机备忘）
             <input
               value={authorization}
               onChange={(e) => setAuthorization(e.target.value)}
@@ -173,8 +173,9 @@ export function SettingsPanel({
             </button>
           </div>
           <p className="hint">
-            「API Key」填左侧「Key」页生成的 <code>ata_…</code>；「Authorization」填上游厂商
-            Key，格式如 <code>Bearer sk-xxxxxx</code>（DeepSeek / OpenAI 等）。
+            「API Key」填左侧「Key」页生成的 <code>ata_…</code>，保存后用于打开仪表盘。
+            「Authorization」只保存在本浏览器，方便你对照写 SDK；真正调用代理时请在代码里传上游{" "}
+            <code>sk-…</code>，网页不会替你转发该字段。
           </p>
         </div>
       )}

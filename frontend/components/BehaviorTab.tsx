@@ -136,11 +136,14 @@ export function BehaviorTab({ apiBase, apiKey, onOpenCall, onChainUpdated }: Pro
   async function deleteBaseline(id: string) {
     setBusy(true);
     try {
-      await fetch(
+      const r = await fetch(
         `${apiBase}/v1/dashboard/behavior/baselines/${encodeURIComponent(id)}?api_key=${encodeURIComponent(apiKey)}`,
         { method: "DELETE" }
       );
+      if (!r.ok) throw new Error("delete baseline failed");
       await loadBaselines();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "delete failed");
     } finally {
       setBusy(false);
     }

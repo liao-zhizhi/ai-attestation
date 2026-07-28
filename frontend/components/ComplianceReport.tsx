@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { attestHeaders } from "@/lib/api";
 
 export type CheckResult = {
   check_id: string;
@@ -146,7 +147,7 @@ export function ComplianceReport({
 
   async function downloadAuthed(url: string, fallbackName: string) {
     try {
-      const res = await fetch(url, { headers: { "X-Attest-Key": apiKey } });
+      const res = await fetch(url, { headers: attestHeaders(apiKey) });
       if (!res.ok) {
         window.alert(`下载失败 (${res.status})`);
         return;

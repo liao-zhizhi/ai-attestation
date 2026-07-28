@@ -6,7 +6,7 @@ type Props = {
 };
 
 /**
- * Beginner-facing step-by-step handbook (Chinese) — matches live UI.
+ * Beginner handbook — wording must match Sidebar / KeysPanel / SettingsPanel exactly.
  */
 export function UserGuide({
   proxyUrl,
@@ -16,21 +16,21 @@ export function UserGuide({
 
   const py = `from openai import OpenAI
 
-# ① 两处 Key 都要换成你自己的
-ATA_KEY = "ata_xxxxxx"          # 在「Key」页创建的见证 Key
-UPSTREAM_KEY = "sk-xxxxxx"      # 上游厂商 Key（DeepSeek / OpenAI 等）
+# ① 两处都要换成你自己的（不要填反）
+ATA_KEY = "ata_xxxxxx"       # 「Key」页生成的见证 Key
+UPSTREAM_KEY = "sk-xxxxxx"   # 上游厂商 Key（DeepSeek / OpenAI 等，不要带 Bearer 前缀）
 
 client = OpenAI(
-    # ② base_url 用左侧「复制代理 URL」得到的地址
+    # ② 左侧底部「复制代理 URL」得到的地址（与设置页 base_url 相同）
     base_url="${displayProxy}",
-    api_key=UPSTREAM_KEY,       # ← 填上游 sk-xxxxxx（不要填 ata_）
+    api_key=UPSTREAM_KEY,              # ← 上游 sk-xxxxxx
     default_headers={
-        "X-Attest-Key": ATA_KEY,  # ← 填 ata_xxxxxx
+        "X-Attest-Key": ATA_KEY,       # ← ata_xxxxxx
     },
 )
 
 resp = client.chat.completions.create(
-    model="deepseek-chat",  # 按你的上游模型改
+    model="deepseek-chat",  # 按上游模型改名
     messages=[{"role": "user", "content": "你好，请介绍一下自己"}],
 )
 print(resp.choices[0].message.content)`;
@@ -39,75 +39,108 @@ print(resp.choices[0].message.content)`;
     <section className="ug">
       <h2>新手操作手册（三步上手）</h2>
       <p className="lead">
-        看一眼流程图，再按下面三步点：先拿 Key → 再填设置 → 最后写代码调用。
+        左侧菜单从上到下是：操作手册 → 仪表盘 → API 调用记录 → 合规管理 → 行为监控 →
+        防篡改证明 → 设置 → Key；最底下有「复制代理 URL」。按三步走即可。
       </p>
 
       <pre className="flow" aria-label="用户流程图">
 {`┌─────────────┐    ┌─────────────┐    ┌─────────────┐
 │  第一步      │    │  第二步      │    │  第三步      │
-│  点击 Key    │ →  │  点击 设置   │ →  │  写代码调用  │
-│  创建 ata_xx │    │  填入两个Key │    │  见证生效    │
+│  点左侧 Key  │ →  │  点左侧 设置 │ →  │  写代码调用  │
+│  创建+复制    │    │  填 Key 保存 │    │  见证生效    │
 └─────────────┘    └─────────────┘    └─────────────┘`}
       </pre>
 
       <ol className="steps">
         <li>
           <h3>第一步：获取 API Key</h3>
-          <p>
-            操作路径：点击左侧菜单 <strong>「Key」</strong> → 点击{" "}
-            <strong>「创建」</strong> → 输入名称（例如{" "}
-            <code>我的测试</code>）→ 复制生成的 <code>ata_xxxxxx</code>。
-          </p>
+          <p>操作路径（与页面按钮文字一致）：</p>
+          <ol className="sub">
+            <li>
+              点左侧菜单 <strong>「Key」</strong>（页面标题也是 Key；内容区标题为{" "}
+              <strong>API Key</strong>）
+            </li>
+            <li>
+              在输入框填写名称（占位提示：<code>输入名称，例如：我的测试</code>）
+            </li>
+            <li>
+              点绿色按钮 <strong>「创建」</strong>
+            </li>
+            <li>
+              出现黄色提示框 <strong>「新 Key（仅完整显示一次，请立刻复制）：」</strong>
+              ，下面是一串 <code>ata_</code> 开头的完整 Key
+            </li>
+            <li>
+              点 <strong>「复制 Key」</strong> 保存到别处
+            </li>
+            <li>
+              若页面提示需要切换，再点 <strong>「设为当前 Key」</strong>
+              （第一次创建且你还没有 Key 时，系统会自动设为当前）
+            </li>
+          </ol>
           <p className="tip">
-            提示：完整 Key <strong>只显示一次</strong>，请立刻复制保存。页面刷新后列表里通常只显示脱敏形式（如{" "}
-            <code>ata_xxxx****</code>）。
+            注意：完整 Key 只完整显示一次。管理员账号在下方「已有 Key」列表刷新后通常只看到脱敏形式（如{" "}
+            <code>ata_xxxx****</code>）。点「设为当前 Key」后，界面会提示再到「设置」确认并保存。
           </p>
         </li>
         <li>
           <h3>第二步：配置设置</h3>
           <p>
-            操作路径：点击左侧菜单 <strong>「设置」</strong>（上方会显示当前角色，例如{" "}
-            <code>read_write</code>）：
+            点左侧菜单 <strong>「设置」</strong>。默认停在上方标签{" "}
+            <strong>「通用」</strong>（旁边还有「报告订阅」，新手可先不管）。
+            你会看到一行 <code>当前角色：…</code>（例如 <code>read_write</code> 或{" "}
+            <code>admin</code>）。
           </p>
           <ul>
             <li>
-              在 <strong>「API Key」</strong> 输入框填入第一步的{" "}
-              <code>ata_xxxxxx</code>（即请求头 <code>X-Attest-Key</code>）
+              在标签为 <strong>「API Key（X-Attest-Key）」</strong> 的输入框填入第一步的{" "}
+              <code>ata_xxxxxx</code>（占位符也是 <code>ata_xxxxxx</code>）
             </li>
             <li>
-              在 <strong>「Authorization」</strong> 输入框填入{" "}
-              <code>Bearer sk-xxxxxx</code>
-              （你的上游厂商 Key，如 DeepSeek / OpenAI）
+              在标签为 <strong>「Authorization（上游厂商 Key，仅本机备忘）」</strong>{" "}
+              的输入框可填 <code>Bearer sk-xxxxxx</code>
+              ——这只保存在本浏览器，方便你对照；网页<strong>不会</strong>用它去调上游
             </li>
             <li>
-              确认 <strong>base_url</strong> 显示为代理地址（例如{" "}
-              <code>{displayProxy}</code>）
+              只读框 <strong>「base_url」</strong> 应显示代理地址，例如{" "}
+              <code>{displayProxy}</code>
             </li>
             <li>
-              点击 <strong>「保存」</strong>
+              点绿色按钮 <strong>「保存」</strong>（同排还有「复制代理 URL」）
             </li>
           </ul>
+          <p className="tip">
+            仪表盘能否打开，只取决于「API Key（X-Attest-Key）」是否正确并已点「保存」。
+            上游 <code>sk-…</code> 必须写在第三步的代码里。
+          </p>
         </li>
         <li>
           <h3>第三步：调用 API</h3>
           <p>
-            先点左侧菜单底部的 <strong>「复制代理 URL」</strong>
-            ，得到代理地址（不要直连厂商官网）。
+            点左侧菜单<strong>最底部</strong>的 <strong>「复制代理 URL」</strong>
+            （设置页「通用」里也有同名按钮），得到代理地址。不要直连厂商官网。
           </p>
           <pre className="mono">{displayProxy}</pre>
-          <p>
-            把下面 Python 示例里标注处换成你的 Key 后运行：
-            <br />
-            · 代码里的 <code>api_key</code> / <code>UPSTREAM_KEY</code> 填上游{" "}
-            <code>sk-xxxxxx</code>
-            <br />
-            · <code>X-Attest-Key</code> / <code>ATA_KEY</code> 填{" "}
-            <code>ata_xxxxxx</code>
-          </p>
+          <p>复制下面 Python 示例，只改标注处：</p>
+          <ul>
+            <li>
+              <code>UPSTREAM_KEY</code> / <code>api_key=</code> → 上游{" "}
+              <code>sk-xxxxxx</code>（不要填 <code>ata_</code>）
+            </li>
+            <li>
+              <code>ATA_KEY</code> / <code>X-Attest-Key</code> →{" "}
+              <code>ata_xxxxxx</code>
+            </li>
+            <li>
+              <code>base_url=</code> → 与左侧复制到的代理 URL 一致
+            </li>
+          </ul>
           <pre className="code">{py}</pre>
           <p>
             调用成功后，打开左侧 <strong>「仪表盘」</strong> 或{" "}
-            <strong>「API 调用记录」</strong>，应能看到刚产生的记录。
+            <strong>「API 调用记录」</strong> 查看记录。
+            若暂时没有上游 Key，也可在右上角点 <strong>「模拟一条调用」</strong>
+            （需要当前角色为 <code>read_write</code> 或 <code>admin</code>）先写入一条演示数据。
           </p>
         </li>
       </ol>
@@ -116,25 +149,30 @@ print(resp.choices[0].message.content)`;
       <dl className="qa">
         <dt>问：提示「后端不可用 / NetworkError」怎么办？</dt>
         <dd>
-          答：在服务器上确认后端已启动，例如执行{" "}
-          <code>ps aux | grep uvicorn</code>。
-          用服务器地址打开前端（如 <code>http://服务器IP:3002</code>），
-          左侧底部代理 URL 应指向该服务器的 <code>:8004</code>
-          ，而不是你自己电脑上的 <code>127.0.0.1</code>（除非你本机同时跑了前后端）。
+          答：在服务器执行 <code>ps aux | grep uvicorn</code> 确认后端在跑。
+          用服务器地址打开前端（如 <code>http://服务器IP:3002</code>）。
+          看左侧底部「复制代理 URL」旁的地址，应是该服务器的 <code>:8004</code>
+          ，而不是你电脑上的 <code>127.0.0.1</code>（除非本机同时跑了前后端）。然后强制刷新（Ctrl+Shift+R）。
         </dd>
-        <dt>问：Key 填了但好像没用？</dt>
+        <dt>问：Key 创建了 / 填了但好像没用？</dt>
         <dd>
-          答：确认已在左侧 <strong>「Key」</strong> 创建并完整复制了{" "}
-          <code>ata_</code> 开头字符串；再到 <strong>「设置」</strong> 填入{" "}
-          <strong>API Key</strong> 与 <strong>Authorization</strong> 后点了{" "}
+          答：在「Key」页确认已 <strong>「复制 Key」</strong>；若未自动切换，点{" "}
+          <strong>「设为当前 Key」</strong>。再到「设置」→「通用」，确认{" "}
+          <strong>「API Key（X-Attest-Key）」</strong> 里是完整 <code>ata_…</code>，并点了{" "}
           <strong>「保存」</strong>。
-          调用代码里：<code>api_key</code> 用上游 <code>sk-</code>，
+          「Authorization」只是备忘，填了也不会单独让仪表盘生效。
+          写代码时：<code>api_key</code> 用上游 <code>sk-</code>，
           <code>X-Attest-Key</code> 用 <code>ata_</code>，不要填反。
+        </dd>
+        <dt>问：右上角「模拟一条调用」点不了？</dt>
+        <dd>
+          答：需要先在「设置」保存有效的 <code>ata_</code> Key，且角色为{" "}
+          <code>read_write</code> 或 <code>admin</code>（只读 <code>read_only</code>{" "}
+          不能写）。把鼠标悬停在按钮上也可能看到提示。
         </dd>
         <dt>问：CORS / 跨域红字是什么？</dt>
         <dd>
-          答：多半是页面地址与请求的后端地址不一致。看左侧底部「复制代理 URL」旁显示的地址，
-          应与当前打开前端的同一台服务器的 <code>:8004</code> 一致，然后强制刷新页面（Ctrl+Shift+R）。
+          答：通常是前端页面主机与请求的后端主机不一致。以左侧底部显示的代理 URL 为准，强制刷新后再试。
         </dd>
       </dl>
 
@@ -188,13 +226,20 @@ print(resp.choices[0].message.content)`;
           margin: 0;
           padding-left: 18px;
         }
-        .steps li {
+        .steps > li {
           margin-bottom: 14px;
         }
         .steps p,
-        .steps ul {
+        .steps ul,
+        .steps .sub {
           margin: 6px 0;
           font-size: 13px;
+        }
+        .sub {
+          padding-left: 18px;
+        }
+        .sub li {
+          margin-bottom: 4px;
         }
         .tip {
           color: #f0b429;
