@@ -117,15 +117,27 @@ _CORS = [
     o.strip()
     for o in os.environ.get(
         "ATA_CORS_ORIGINS",
-        "*",
+        # Explicit dashboard origins + wildcard for MVP remote testing.
+        "*,http://47.119.118.245:3002,http://localhost:3002,http://127.0.0.1:3002",
     ).split(",")
     if o.strip()
 ]
-# Bare "*" → allow all origins (MVP / remote dashboard testing).
-if _CORS == ["*"]:
-    _CORS_ORIGINS: list[str] = ["*"]
-else:
-    _CORS_ORIGINS = _CORS
+_ALLOW_ALL = "*" in _CORS
+_CORS_ORIGINS: list[str] = (
+    [o for o in _CORS if o != "*"]
+    if _ALLOW_ALL
+    else _CORS
+)
+# Always keep common local + deploy origins even when env is a custom list.
+for _o in (
+    "http://47.119.118.245:3002",
+    "http://localhost:3002",
+    "http://127.0.0.1:3002",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+):
+    if _o not in _CORS_ORIGINS:
+        _CORS_ORIGINS.append(_o)
 
 DB_PATH = init_db()
 ensure_api_key(DEFAULT_DEMO_KEY, label="demo", name="demo", role="admin")
@@ -135,13 +147,16 @@ start_report_scheduler(db_path=DB_PATH)
 
 app = FastAPI(title=BRAND, version=VERSION)
 # CORS is built into FastAPI/Starlette — no separate fastapi-cors package needed.
+# When ATA_CORS_ORIGINS includes "*", also match any http(s) Origin via regex so
+# Access-Control-Allow-Origin echoes the request Origin (works with credentials).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_CORS_ORIGINS,
-    # Browsers disallow credentials with wildcard origins; disable when "*".
-    allow_credentials=_CORS_ORIGINS != ["*"],
+    allow_origin_regex=r"https?://.*" if _ALLOW_ALL else None,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 
@@ -151,19 +166,34 @@ async def log_requests(request: Request, call_next):
     return await call_next(request)
 
 
+def _public_api_base(request: Request) -> str:
+    """Prefer ATA_PUBLIC_BASE; else reconstruct from the incoming Host."""
+    explicit = os.environ.get("ATA_PUBLIC_BASE", "").strip().rstrip("/")
+    if explicit:
+        return explicit
+    host = (
+        request.headers.get("x-forwarded-host")
+        or request.headers.get("host")
+        or "127.0.0.1:8004"
+    )
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme or "http"
+    return f"{proto}://{host}".rstrip("/")
+
+
 class IssueKeyBody(BaseModel):
     label: str = Field(default="trial", max_length=80)
 
 
 @app.get("/health")
-def health() -> Dict[str, Any]:
+def health(request: Request) -> Dict[str, Any]:
+    base = _public_api_base(request)
     out: Dict[str, Any] = {
         "ok": True,
         "product": BRAND,
         "version": VERSION,
         "status": "mvp",
         "db": str(DB_PATH),
-        "proxy_base": "http://127.0.0.1:8004/v1/proxy",
+        "proxy_base": f"{base}/v1/proxy",
     }
     # Do not leak demo credentials by default
     if os.environ.get("ATA_EXPOSE_DEMO_KEY", "").strip().lower() in ("1", "true", "yes"):
@@ -172,17 +202,19 @@ def health() -> Dict[str, Any]:
 
 
 @app.post("/v1/keys")
-def issue_key(body: IssueKeyBody) -> Dict[str, Any]:
+def issue_key(body: IssueKeyBody, request: Request) -> Dict[str, Any]:
     """Issue a free trial attestation key (no Stripe / no login)."""
     rec = create_api_key_record(name=body.label or "trial", role="read_write", db_path=DB_PATH)
+    base = _public_api_base(request)
+    proxy = f"{base}/v1/proxy"
     return {
         "api_key": rec["api_key"],
         "label": body.label,
         "name": rec["name"],
         "role": rec["role"],
-        "proxy_url": "http://127.0.0.1:8004/v1/proxy",
+        "proxy_url": proxy,
         "usage_hint": (
-            "Set SDK base_url to http://127.0.0.1:8004/v1/proxy "
+            f"Set SDK base_url to {proxy} "
             "and header X-Attest-Key: <api_key>. Keep Authorization as upstream key."
         ),
     }

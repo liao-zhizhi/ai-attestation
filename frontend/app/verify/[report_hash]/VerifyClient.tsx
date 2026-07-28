@@ -2,11 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-
-const API =
-  process.env.NEXT_PUBLIC_API_BASE_URL ||
-  process.env.NEXT_PUBLIC_API_BASE ||
-  "http://127.0.0.1:8004";
+import { resolveApiBase } from "@/lib/apiBase";
 
 
 type Verification = {
@@ -66,6 +62,7 @@ export default function VerifyClient() {
   const reportHash = String(params?.report_hash || "");
   const token = search.get("p") || "";
 
+  const [apiBase, setApiBase] = useState("http://127.0.0.1:8004");
   const [pack, setPack] = useState<Pack | null>(null);
   const [verification, setVerification] = useState<Verification | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -79,6 +76,10 @@ export default function VerifyClient() {
   const [impactResult, setImpactResult] = useState<Record<string, unknown> | null>(null);
   const [impactBusy, setImpactBusy] = useState(false);
 
+  useEffect(() => {
+    setApiBase(resolveApiBase());
+  }, []);
+
   const load = useCallback(async () => {
     if (!token) {
       setErr("缺少验证包参数 p=…（自包含 token）");
@@ -87,7 +88,7 @@ export default function VerifyClient() {
     setBusy(true);
     setErr(null);
     try {
-      const r = await fetch(`${API}/v1/public/verify?p=${encodeURIComponent(token)}`);
+      const r = await fetch(`${apiBase}/v1/public/verify?p=${encodeURIComponent(token)}`);
       if (!r.ok) throw new Error(await r.text());
       const d = await r.json();
       setPack(d.pack || null);
@@ -107,7 +108,7 @@ export default function VerifyClient() {
     } finally {
       setBusy(false);
     }
-  }, [token, reportHash]);
+  }, [token, reportHash, apiBase]);
 
   useEffect(() => {
     load().catch(() => undefined);
@@ -117,7 +118,7 @@ export default function VerifyClient() {
     if (!token) return;
     setBusy(true);
     try {
-      const r = await fetch(`${API}/v1/public/verify`, {
+      const r = await fetch(`${apiBase}/v1/public/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token }),
@@ -135,7 +136,7 @@ export default function VerifyClient() {
   async function requestNotary() {
     const rh = pack?.report?.report_hash || reportHash;
     if (!rh) return;
-    const r = await fetch(`${API}/v1/public/notarize`, {
+    const r = await fetch(`${apiBase}/v1/public/notarize`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ report_hash: rh, method: "opentimestamps" }),
@@ -161,7 +162,7 @@ export default function VerifyClient() {
     setImpactBusy(true);
     setErr(null);
     try {
-      const r = await fetch(`${API}/v1/dashboard/compliance/impact-analysis`, {
+      const r = await fetch(`${apiBase}/v1/dashboard/compliance/impact-analysis`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -237,7 +238,7 @@ export default function VerifyClient() {
     return "unknown";
   }, [report]);
 
-  const badgeUrl = `${API}/v1/public/badge/${encodeURIComponent(
+  const badgeUrl = `${apiBase}/v1/public/badge/${encodeURIComponent(
     report?.report_hash || reportHash || "unknown"
   )}.svg?status=${encodeURIComponent(badgeStatus)}`;
 
@@ -326,7 +327,7 @@ export default function VerifyClient() {
               {token && (
                 <a
                   className="btn"
-                  href={`${API}/v1/public/offline-pack?p=${encodeURIComponent(token)}`}
+                  href={`${apiBase}/v1/public/offline-pack?p=${encodeURIComponent(token)}`}
                 >
                   下载离线验证包
                 </a>

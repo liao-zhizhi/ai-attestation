@@ -15,11 +15,8 @@ import { SettingsPanel } from "@/components/SettingsPanel";
 import { ExportDialog } from "@/components/ExportDialog";
 import { Timeline, type ApiCall } from "@/components/Timeline";
 import { TrendCharts, type DayPoint, type VendorSlice } from "@/components/TrendCharts";
-
-const API =
-  process.env.NEXT_PUBLIC_API_BASE_URL ||
-  process.env.NEXT_PUBLIC_API_BASE ||
-  "http://127.0.0.1:8004";
+import { UserGuide } from "@/components/UserGuide";
+import { resolveApiBase } from "@/lib/apiBase";
 
 const STORAGE_KEY = "ata_mvp_api_key";
 
@@ -45,7 +42,8 @@ const VENDOR_COLORS = [
 ];
 
 export default function HomePage() {
-  const [nav, setNav] = useState<NavId>("dashboard");
+  const [nav, setNav] = useState<NavId>("guide");
+  const [apiBase, setApiBase] = useState("http://127.0.0.1:8004");
   const [apiKey, setApiKey] = useState("");
   const [calls, setCalls] = useState<ApiCall[]>([]);
   const [pendingMarks, setPendingMarks] = useState(0);
@@ -95,15 +93,19 @@ export default function HomePage() {
   const [role, setRole] = useState("read_write");
   const [exportOpen, setExportOpen] = useState(false);
 
-  const proxyUrl = useMemo(() => `${API}/v1/proxy`, []);
+  const proxyUrl = useMemo(() => `${apiBase}/v1/proxy`, [apiBase]);
   const canAdmin = role === "admin";
   const showSettings = role !== "read_only";
+
+  useEffect(() => {
+    setApiBase(resolveApiBase());
+  }, []);
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) setApiKey(saved);
     else {
-      fetch(`${API}/health`)
+      fetch(`${apiBase}/health`)
         .then((r) => r.json())
         .then((d) => {
           if (d.demo_api_key) {
@@ -113,7 +115,7 @@ export default function HomePage() {
         })
         .catch(() => undefined);
     }
-  }, []);
+  }, [apiBase]);
 
   const refresh = useCallback(
     async (key: string, opts?: { append?: boolean; offset?: number }) => {
@@ -125,16 +127,16 @@ export default function HomePage() {
         const limit = 100;
         const [cRes, aRes, hRes, oRes, meRes] = await Promise.all([
           fetch(
-            `${API}/v1/dashboard/calls?api_key=${encodeURIComponent(key)}&limit=${limit}&offset=${offset}`
+            `${apiBase}/v1/dashboard/calls?api_key=${encodeURIComponent(key)}&limit=${limit}&offset=${offset}`
           ),
-          fetch(`${API}/v1/dashboard/attestation?api_key=${encodeURIComponent(key)}`),
-          fetch(`${API}/v1/dashboard/query-history?api_key=${encodeURIComponent(key)}&limit=20`),
+          fetch(`${apiBase}/v1/dashboard/attestation?api_key=${encodeURIComponent(key)}`),
+          fetch(`${apiBase}/v1/dashboard/query-history?api_key=${encodeURIComponent(key)}&limit=20`),
           append
             ? Promise.resolve(null)
-            : fetch(`${API}/v1/dashboard/overview?api_key=${encodeURIComponent(key)}`),
+            : fetch(`${apiBase}/v1/dashboard/overview?api_key=${encodeURIComponent(key)}`),
           append
             ? Promise.resolve(null)
-            : fetch(`${API}/v1/dashboard/me?api_key=${encodeURIComponent(key)}`),
+            : fetch(`${apiBase}/v1/dashboard/me?api_key=${encodeURIComponent(key)}`),
         ]);
         if (!cRes.ok || !aRes.ok) throw new Error("dashboard fetch failed");
         const cJson = await cRes.json();
@@ -195,7 +197,7 @@ export default function HomePage() {
         setErr(e instanceof Error ? e.message : "load failed");
       }
     },
-    []
+    [apiBase]
   );
 
   useEffect(() => {
@@ -214,7 +216,7 @@ export default function HomePage() {
   async function issueKey() {
     setBusy(true);
     try {
-      const r = await fetch(`${API}/v1/keys`, {
+      const r = await fetch(`${apiBase}/v1/keys`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ label: "trial" }),
@@ -235,7 +237,7 @@ export default function HomePage() {
     if (!apiKey) return;
     setBusy(true);
     try {
-      const r = await fetch(`${API}/v1/demo/simulate`, {
+      const r = await fetch(`${apiBase}/v1/demo/simulate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ api_key: apiKey }),
@@ -277,7 +279,7 @@ export default function HomePage() {
     const f = override || filters;
     setQueryBusy(true);
     try {
-      const r = await fetch(`${API}/v1/dashboard/query`, {
+      const r = await fetch(`${apiBase}/v1/dashboard/query`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(filtersToBody(f)),
@@ -319,7 +321,7 @@ export default function HomePage() {
     setProof(null);
     try {
       const r = await fetch(
-        `${API}/v1/dashboard/calls/${id}?api_key=${encodeURIComponent(apiKey)}`
+        `${apiBase}/v1/dashboard/calls/${id}?api_key=${encodeURIComponent(apiKey)}`
       );
       const d = await r.json().catch(() => ({}));
       if (!r.ok || !d.call) {
@@ -342,7 +344,7 @@ export default function HomePage() {
     setBusy(true);
     try {
       const r = await fetch(
-        `${API}/v1/dashboard/calls/${detail.id}/verify?api_key=${encodeURIComponent(apiKey)}`,
+        `${apiBase}/v1/dashboard/calls/${detail.id}/verify?api_key=${encodeURIComponent(apiKey)}`,
         { method: "POST" }
       );
       const d = await r.json();
@@ -369,7 +371,7 @@ export default function HomePage() {
     if (!apiKey) return;
     setAnchoring(true);
     try {
-      const r = await fetch(`${API}/v1/dashboard/attestation/anchor`, {
+      const r = await fetch(`${apiBase}/v1/dashboard/attestation/anchor`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ api_key: apiKey }),
@@ -400,6 +402,7 @@ export default function HomePage() {
         <header className="top">
           <div>
             <div className="brand">
+              {nav === "guide" && "操作手册"}
               {nav === "dashboard" && "仪表盘"}
               {nav === "calls" && "API 调用记录"}
               {nav === "compliance" && "合规管理"}
@@ -427,6 +430,8 @@ export default function HomePage() {
         </header>
 
         {err && <div className="err">后端不可用：{err}（确认 :8004 已启动）</div>}
+
+        {nav === "guide" && <UserGuide proxyUrl={proxyUrl} />}
 
         {(nav === "dashboard" || nav === "calls") && queryOpen && (
           <>
@@ -499,7 +504,7 @@ export default function HomePage() {
 
         {nav === "compliance" && (
           <ComplianceTab
-            apiBase={API}
+            apiBase={apiBase}
             apiKey={apiKey}
             onOpenCall={openDetail}
             onChainUpdated={() => refresh(apiKey)}
@@ -508,7 +513,7 @@ export default function HomePage() {
 
         {nav === "behavior" && (
           <BehaviorTab
-            apiBase={API}
+            apiBase={apiBase}
             apiKey={apiKey}
             onOpenCall={openDetail}
             onChainUpdated={() => refresh(apiKey)}
@@ -527,7 +532,7 @@ export default function HomePage() {
 
         {nav === "settings" && showSettings && (
           <SettingsPanel
-            apiBase={API}
+            apiBase={apiBase}
             apiKey={apiKey}
             setApiKey={setApiKey}
             proxyUrl={proxyUrl}
@@ -542,7 +547,7 @@ export default function HomePage() {
         )}
 
         <ExportDialog
-          apiBase={API}
+          apiBase={apiBase}
           apiKey={apiKey}
           open={exportOpen}
           onClose={() => setExportOpen(false)}

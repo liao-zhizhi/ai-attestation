@@ -1,6 +1,7 @@
 "use client";
 
 export type NavId =
+  | "guide"
   | "dashboard"
   | "calls"
   | "compliance"
@@ -19,6 +20,7 @@ type Props = {
 };
 
 const ITEMS: { id: NavId; label: string }[] = [
+  { id: "guide", label: "操作手册" },
   { id: "dashboard", label: "仪表盘" },
   { id: "calls", label: "API 调用记录" },
   { id: "compliance", label: "合规管理" },
