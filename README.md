@@ -10,11 +10,11 @@
 
 - This is **not** a certified audit, legal opinion, or compliance certification product.  
 - 本工具**不构成**法律意见、认证审计或行业标准定义。  
-- **Do not expose an unmodified MVP to the public internet.** Bind the API to `127.0.0.1` for local use; provision keys via `POST /v1/keys` (demo bootstrap may seed one local key). See [`SECURITY.md`](SECURITY.md).
+- **Do not expose an unmodified MVP to the public internet.** Bind the API to `127.0.0.1` for local use; provision keys via `POST /v1/keys` (demo bootstrap may seed one local key). See [`SECURITY.md`](./SECURITY.md).
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE).
+MIT — see [`LICENSE`](./LICENSE).
 
 ## Demo
 
@@ -27,7 +27,25 @@ MIT — see [`LICENSE`](LICENSE).
 
 Public demo / GitHub URLs can be set via `NEXT_PUBLIC_DASHBOARD_URL`, `NEXT_PUBLIC_GITHUB_URL`, `NEXT_PUBLIC_PROXY_URL`.
 
-## What it does / does not
+## 🎯 这东西是干什么的？ / What is this?
+
+就像给 AI 调用装上 **行车记录仪 + 计价器 + 可公证黑匣子**：
+
+- **不是替你开车**（我们不做模型，不拼算力）
+- **而是留下不可随意篡改的行程与费用证据**
+- 需要时给交警、保险公司或甲方查
+
+👉 一句话：客户买的不是「我们更懂 AI」，而是 **出事时能对账、能重放、能给第三方验** 的决策保险。
+
+Like a **dashcam + meter + notarizable black box** for AI API calls:
+
+- **We don’t drive for you** (no models, no GPUs)
+- **We leave tamper-evident trip and cost evidence**
+- So police, insurers, or your customer can check when needed
+
+👉 One line: buyers are not paying for “we know AI better” — they pay for **decision insurance**: reconcile, replay, and third-party verify when something goes wrong.
+
+## 功能清单 / What it does / does not
 
 **Does:** multi-vendor API proxy · SHA-256 tamper-evident hash chain · cost metering · query-as-audit · compliance-as-code (multi-standard YAML) · custom template editor · check evidence drill-down · independent timestamp · chain-head blockchain anchor (Sepolia mock by default) · shareable verify page · offline verify pack · OSCAL-style export · behavior baseline / drift marks · enterprise dashboard · async DB writes · report email · API key roles · CSV/JSON export  
 
@@ -130,8 +148,10 @@ CI runs backend pytest plus `frontend` / `website` production builds (see `.gith
 - Does **not** persist request/response bodies — only byte lengths and SHA-256 digests  
 - MVP has no PII redaction pipeline
 
-## Contributing
+## Contributing / 贡献
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`SECURITY.md`](SECURITY.md).  
-Compliance templates: `compliance-templates/CONTRIBUTING.md`.  
-Packaging checks: `OPENSOURCE_CHECKLIST.md`.
+See [`CONTRIBUTING.md`](./CONTRIBUTING.md) (中英双语).  
+Compliance templates / 合规模板：[`compliance-templates/CONTRIBUTING.md`](./compliance-templates/CONTRIBUTING.md).  
+Packaging checks / 打包检查：[`OPENSOURCE_CHECKLIST.md`](./OPENSOURCE_CHECKLIST.md).
+
+Security reports / 安全报告：**[SECURITY.md](./SECURITY.md)**（do not open public Issues for unpatched vulns / 请勿用公开 Issue 报告未修复漏洞）.

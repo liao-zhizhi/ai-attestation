@@ -1,45 +1,106 @@
-# Contributing to ai-attestation
+# Contributing / 贡献指南
 
-Thanks for helping improve this open-source AI API audit proxy.
+Thanks for helping improve **ai-attestation**.  
+感谢参与 **ai-attestation**。
 
-## Ways to contribute
+---
 
-1. **Compliance check templates** — add or refine YAML under `compliance-templates/` (see that folder’s `CONTRIBUTING.md`).
-2. **Core proxy / evidence chain** — bug fixes and small, reviewable improvements in `backend/app/`.
-3. **Dashboard / website** — UX clarity and docs in `frontend/` and `website/`.
-4. **Tests** — extend coverage under `backend/tests/`.
+## English
 
-## Development setup
+### Issues
 
-```bash
-# Backend
-cd backend/app
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-pip install pytest
-uvicorn main:app --host 127.0.0.1 --port 8004
+- Search existing issues first.
+- Include: **expected behavior / actual behavior / reproduction steps** (commands, environment, versions, relevant logs).
+- Security vulnerabilities: follow [`SECURITY.md`](./SECURITY.md). **Do not** open a public issue.
 
-# Dashboard (another terminal)
-cd frontend && npm install && npm run dev
+### Pull requests
 
-# Optional marketing site
-cd website && npm install && npm run dev
-```
+1. Fork the repo and branch from `main`.
+2. Keep changes small and focused; match existing code style (naming, layout, typing habits).
+3. Do not commit secrets, `.env`, local `data/*.db`, `.next/`, or `node_modules/`.
+4. In the PR body, explain **what changed and why**.
 
-## Tests
+### Compliance templates
+
+1. Add or edit YAML under `compliance-templates/` (`standards/` for standards, `checks/` for shared checks).
+2. Follow existing template format; see that folder’s `CONTRIBUTING.md` / `README.md`.
+3. Keep wording factual and evidence-oriented; avoid overclaiming “certification” or legal conclusions.
+
+### Tests before submit
 
 ```bash
 cd backend
 PYTHONPATH=app python -m pytest tests/ -q
 ```
 
-## Pull requests
+If you touched the frontend:
 
-- Keep PRs focused; prefer small diffs over large refactors.
-- Do not commit secrets, `.env`, local `data/*.db`, or build caches (`.next/`, `node_modules/`).
-- Match existing naming: product brand is **ai-attestation**; prefer neutral terms (evidence chain, audit proxy).
-- Describe *why* the change matters in the PR body.
+```bash
+cd frontend && npm run build
+# optional marketing site:
+cd website && npm run build
+```
 
-## Scope reminders
+### Local development (optional)
 
-This project is an **MVP technical tool**. It does not define industry standards or provide legal certification advice. Template wording should stay factual and evidence-oriented.
+```bash
+# Backend
+cd backend/app
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn main:app --host 127.0.0.1 --port 8004
+
+# Dashboard
+cd frontend && npm install && npm run dev
+```
+
+---
+
+## 中文
+
+### 提交 Issue
+
+- 先搜索是否已有相同问题。
+- 写清：**期望行为 / 实际行为 / 复现步骤**（命令、环境、版本、相关日志）。
+- 安全漏洞请走 [`SECURITY.md`](./SECURITY.md)，**不要**开公开 Issue。
+
+### 提交 Pull Request
+
+1. Fork 本仓库，从 `main` 拉新分支。
+2. 改动尽量小而聚焦；代码风格对齐现有文件（命名、目录结构、类型习惯）。
+3. 不要提交密钥、`.env`、本地 `data/*.db`、`.next/`、`node_modules/`。
+4. PR 描述写清**改了什么、为什么改**。
+
+### 合规模板贡献
+
+1. 在 `compliance-templates/` 下新增或修改 YAML（标准见 `standards/`，共享检查见 `checks/`）。
+2. 格式参考现有模板；字段含义见该目录的 `CONTRIBUTING.md` / `README.md`。
+3. 模板措辞保持可验证、证据导向，避免夸大「认证」「合规结论」。
+
+### 提交前跑测试
+
+```bash
+cd backend
+PYTHONPATH=app python -m pytest tests/ -q
+```
+
+有前端改动时，建议再跑：
+
+```bash
+cd frontend && npm run build
+# 如改了宣传站：
+cd website && npm run build
+```
+
+### 本地开发（可选）
+
+```bash
+# 后端
+cd backend/app
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn main:app --host 127.0.0.1 --port 8004
+
+# 仪表盘
+cd frontend && npm install && npm run dev
+```
