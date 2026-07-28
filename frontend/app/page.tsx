@@ -12,6 +12,7 @@ import { QueryPanel, type QueryFilters } from "@/components/QueryPanel";
 import { QueryResults, type QueryResultRow } from "@/components/QueryResults";
 import { Sidebar, type NavId } from "@/components/Sidebar";
 import { SettingsPanel } from "@/components/SettingsPanel";
+import { KeysPanel } from "@/components/KeysPanel";
 import { ExportDialog } from "@/components/ExportDialog";
 import { Timeline, type ApiCall } from "@/components/Timeline";
 import { TrendCharts, type DayPoint, type VendorSlice } from "@/components/TrendCharts";
@@ -19,6 +20,7 @@ import { UserGuide } from "@/components/UserGuide";
 import { resolveApiBase } from "@/lib/apiBase";
 
 const STORAGE_KEY = "ata_mvp_api_key";
+const AUTH_STORAGE_KEY = "ata_mvp_authorization";
 
 const DEFAULT_FILTERS: QueryFilters = {
   time_range: "7d",
@@ -45,6 +47,7 @@ export default function HomePage() {
   const [nav, setNav] = useState<NavId>("guide");
   const [apiBase, setApiBase] = useState("http://127.0.0.1:8004");
   const [apiKey, setApiKey] = useState("");
+  const [authorization, setAuthorization] = useState("");
   const [calls, setCalls] = useState<ApiCall[]>([]);
   const [pendingMarks, setPendingMarks] = useState(0);
   const [todayCallsN, setTodayCallsN] = useState(0);
@@ -103,6 +106,8 @@ export default function HomePage() {
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
+    const savedAuth = localStorage.getItem(AUTH_STORAGE_KEY);
+    if (savedAuth) setAuthorization(savedAuth);
     if (saved) setApiKey(saved);
     else {
       fetch(`${apiBase}/health`)
@@ -201,7 +206,9 @@ export default function HomePage() {
   );
 
   useEffect(() => {
-    if (role === "read_only" && nav === "settings") setNav("dashboard");
+    if (role === "read_only" && (nav === "settings" || nav === "keys")) {
+      setNav("dashboard");
+    }
   }, [role, nav]);
 
   useEffect(() => {
@@ -210,27 +217,8 @@ export default function HomePage() {
 
   async function onSaveKey() {
     localStorage.setItem(STORAGE_KEY, apiKey.trim());
+    localStorage.setItem(AUTH_STORAGE_KEY, authorization.trim());
     await refresh(apiKey.trim());
-  }
-
-  async function issueKey() {
-    setBusy(true);
-    try {
-      const r = await fetch(`${apiBase}/v1/keys`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ label: "trial" }),
-      });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok || typeof d.api_key !== "string" || !d.api_key) {
-        setErr(typeof d.detail === "string" ? d.detail : "签发密钥失败");
-        return;
-      }
-      setApiKey(d.api_key);
-      localStorage.setItem(STORAGE_KEY, d.api_key);
-    } finally {
-      setBusy(false);
-    }
   }
 
   async function simulate() {
@@ -409,6 +397,7 @@ export default function HomePage() {
               {nav === "behavior" && "行为监控"}
               {nav === "attestation" && "防篡改证明"}
               {nav === "settings" && "设置"}
+              {nav === "keys" && "Key"}
             </div>
             <div className="sub">独立验证与对账 · MVP</div>
           </div>
@@ -535,14 +524,26 @@ export default function HomePage() {
             apiBase={apiBase}
             apiKey={apiKey}
             setApiKey={setApiKey}
+            authorization={authorization}
+            setAuthorization={setAuthorization}
             proxyUrl={proxyUrl}
             onSaveKey={onSaveKey}
-            onIssueKey={issueKey}
             onCopyProxy={copyProxy}
             copied={copied}
             busy={busy}
             role={role}
+          />
+        )}
+
+        {nav === "keys" && showSettings && (
+          <KeysPanel
+            apiBase={apiBase}
+            apiKey={apiKey}
             canAdmin={canAdmin}
+            onCreated={(k) => {
+              setApiKey(k);
+              localStorage.setItem(STORAGE_KEY, k);
+            }}
           />
         )}
 

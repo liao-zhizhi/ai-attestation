@@ -7,7 +7,8 @@ export type NavId =
   | "compliance"
   | "behavior"
   | "attestation"
-  | "settings";
+  | "settings"
+  | "keys";
 
 type Props = {
   active: NavId;
@@ -27,6 +28,7 @@ const ITEMS: { id: NavId; label: string }[] = [
   { id: "behavior", label: "行为监控" },
   { id: "attestation", label: "防篡改证明" },
   { id: "settings", label: "设置" },
+  { id: "keys", label: "Key" },
 ];
 
 export function Sidebar({
@@ -39,7 +41,9 @@ export function Sidebar({
   showSettings = true,
 }: Props) {
   const suffix = apiKey.length >= 6 ? `…${apiKey.slice(-6)}` : "—";
-  const items = showSettings ? ITEMS : ITEMS.filter((i) => i.id !== "settings");
+  const items = showSettings
+    ? ITEMS
+    : ITEMS.filter((i) => i.id !== "settings" && i.id !== "keys");
   return (
     <aside className="sb">
       <div className="brand">

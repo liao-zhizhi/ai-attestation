@@ -2,20 +2,20 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-type SubTab = "general" | "reports" | "keys";
+type SubTab = "general" | "reports";
 
 type Props = {
   apiBase: string;
   apiKey: string;
   setApiKey: (k: string) => void;
+  authorization: string;
+  setAuthorization: (v: string) => void;
   proxyUrl: string;
   onSaveKey: () => void;
-  onIssueKey: () => void;
   onCopyProxy: () => void;
   copied: boolean;
   busy: boolean;
   role: string;
-  canAdmin: boolean;
 };
 
 type HistoryItem = {
@@ -25,29 +25,18 @@ type HistoryItem = {
   error_message?: string | null;
 };
 
-type KeyRow = {
-  api_key_masked: string;
-  api_key_full: string;
-  name: string;
-  role: string;
-  status: string;
-  created_at?: string;
-  last_used_at?: string | null;
-  is_self?: boolean;
-};
-
 export function SettingsPanel({
   apiBase,
   apiKey,
   setApiKey,
+  authorization,
+  setAuthorization,
   proxyUrl,
   onSaveKey,
-  onIssueKey,
   onCopyProxy,
   copied,
   busy,
   role,
-  canAdmin,
 }: Props) {
   const [tab, setTab] = useState<SubTab>("general");
   const [email, setEmail] = useState("");
@@ -59,11 +48,6 @@ export function SettingsPanel({
   });
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [subMsg, setSubMsg] = useState<string | null>(null);
-  const [keys, setKeys] = useState<KeyRow[]>([]);
-  const [newName, setNewName] = useState("");
-  const [newRole, setNewRole] = useState("read_write");
-  const [reveal, setReveal] = useState<Record<string, boolean>>({});
-  const [createdOnce, setCreatedOnce] = useState<string | null>(null);
 
   const loadSub = useCallback(async () => {
     if (!apiKey) return;
@@ -85,20 +69,9 @@ export function SettingsPanel({
     setHistory(d.history || []);
   }, [apiBase, apiKey]);
 
-  const loadKeys = useCallback(async () => {
-    if (!apiKey || !canAdmin) return;
-    const r = await fetch(
-      `${apiBase}/v1/dashboard/settings/keys?api_key=${encodeURIComponent(apiKey)}`
-    );
-    if (!r.ok) return;
-    const d = await r.json();
-    setKeys(d.keys || []);
-  }, [apiBase, apiKey, canAdmin]);
-
   useEffect(() => {
     if (tab === "reports") loadSub();
-    if (tab === "keys") loadKeys();
-  }, [tab, loadSub, loadKeys]);
+  }, [tab, loadSub]);
 
   async function saveSub() {
     setSubMsg(null);
@@ -146,94 +119,62 @@ export function SettingsPanel({
     setTimeout(loadSub, 800);
   }
 
-  async function createKey() {
-    if (!newName.trim()) return;
-    const r = await fetch(`${apiBase}/v1/dashboard/settings/keys`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        api_key: apiKey,
-        name: newName.trim(),
-        role: newRole,
-      }),
-    });
-    const d = await r.json().catch(() => ({}));
-    if (r.ok) {
-      setCreatedOnce(d.key?.api_key || null);
-      setNewName("");
-      setSubMsg("");
-      await loadKeys();
-    } else {
-      const detail = d.detail;
-      setSubMsg(
-        typeof detail === "string"
-          ? detail
-          : detail
-            ? JSON.stringify(detail)
-            : `创建密钥失败 (${r.status})`
-      );
-    }
-  }
-
-  async function patchKey(target: string, patch: Record<string, string>) {
-    await fetch(`${apiBase}/v1/dashboard/settings/keys`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ api_key: apiKey, target_key: target, ...patch }),
-    });
-    await loadKeys();
-  }
-
-  const tabs: { id: SubTab; label: string; adminOnly?: boolean; hideForReadonly?: boolean }[] = [
+  const tabs: { id: SubTab; label: string }[] = [
     { id: "general", label: "通用" },
     { id: "reports", label: "报告订阅" },
-    { id: "keys", label: "API Key 管理", adminOnly: true },
   ];
 
   return (
     <section className="sp">
       <nav className="tabs">
-        {tabs
-          .filter((t) => !t.adminOnly || canAdmin)
-          .map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              className={tab === t.id ? "on" : ""}
-              onClick={() => setTab(t.id)}
-            >
-              {t.label}
-            </button>
-          ))}
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            className={tab === t.id ? "on" : ""}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
       </nav>
       <div className="role mono">当前角色：{role || "—"}</div>
 
       {tab === "general" && (
         <div className="pane">
           <label>
-            API Key
+            API Key（X-Attest-Key）
             <input
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               spellCheck={false}
-              placeholder="ata_…"
+              placeholder="ata_xxxxxx"
             />
           </label>
+          <label>
+            Authorization（上游厂商 Key）
+            <input
+              value={authorization}
+              onChange={(e) => setAuthorization(e.target.value)}
+              spellCheck={false}
+              placeholder="Bearer sk-xxxxxx"
+            />
+          </label>
+          <label>
+            base_url
+            <input value={proxyUrl} readOnly spellCheck={false} />
+          </label>
           <div className="row">
-            <button type="button" onClick={onSaveKey}>
-              保存并加载
-            </button>
-            <button type="button" onClick={onIssueKey} disabled={busy}>
-              签发新 Key
+            <button type="button" className="accent" onClick={onSaveKey} disabled={busy}>
+              保存
             </button>
             <button type="button" onClick={onCopyProxy}>
               {copied ? "已复制" : "复制代理 URL"}
             </button>
           </div>
-          <p className="hint mono">
-            base_url={proxyUrl}
-            <br />
-            Header X-Attest-Key · Authorization=Bearer &lt;upstream&gt;
+          <p className="hint">
+            「API Key」填左侧「Key」页生成的 <code>ata_…</code>；「Authorization」填上游厂商
+            Key，格式如 <code>Bearer sk-xxxxxx</code>（DeepSeek / OpenAI 等）。
           </p>
         </div>
       )}
@@ -251,32 +192,32 @@ export function SettingsPanel({
           <label>
             频率
             <select value={frequency} onChange={(e) => setFrequency(e.target.value)}>
-              <option value="daily">每日（昨日摘要）</option>
-              <option value="weekly">每周一（上周报告）</option>
-              <option value="monthly">每月 1 日（上月报告）</option>
+              <option value="daily">每天</option>
+              <option value="weekly">每周</option>
+              <option value="monthly">每月</option>
             </select>
           </label>
           <fieldset>
-            <legend>报告内容</legend>
+            <legend>内容选项</legend>
             {(
               [
-                ["api_overview", "API 调用概览"],
-                ["drift_summary", "待审计标记摘要"],
-                ["compliance_summary", "合规状态摘要"],
+                ["api_overview", "API 概览"],
+                ["drift_summary", "漂移摘要"],
+                ["compliance_summary", "合规摘要"],
               ] as const
             ).map(([k, label]) => (
               <label key={k} className="chk">
                 <input
                   type="checkbox"
                   checked={opts[k]}
-                  onChange={(e) => setOpts({ ...opts, [k]: e.target.checked })}
+                  onChange={(e) => setOpts((o) => ({ ...o, [k]: e.target.checked }))}
                 />
                 {label}
               </label>
             ))}
           </fieldset>
           <div className="row">
-            <button type="button" className="accent" onClick={saveSub}>
+            <button type="button" onClick={saveSub}>
               保存订阅
             </button>
             <button type="button" onClick={testSub}>
@@ -304,87 +245,6 @@ export function SettingsPanel({
               ))}
             </ul>
           )}
-        </div>
-      )}
-
-      {tab === "keys" && canAdmin && (
-        <div className="pane">
-          <div className="create">
-            <input
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="新 Key 名称"
-            />
-            <select value={newRole} onChange={(e) => setNewRole(e.target.value)}>
-              <option value="read_only">read_only</option>
-              <option value="read_write">read_write</option>
-              <option value="admin">admin</option>
-            </select>
-            <button type="button" className="accent" onClick={createKey}>
-              创建
-            </button>
-          </div>
-          {createdOnce && (
-            <p className="msg mono">
-              新 Key（仅显示一次）：{createdOnce}
-            </p>
-          )}
-          <ul className="klist">
-            {keys.map((k) => (
-              <li key={k.api_key_full}>
-                <div className="khead">
-                  <strong>{k.name}</strong>
-                  <span className={`st ${k.status}`}>{k.status}</span>
-                  <span className="role-b">{k.role}</span>
-                </div>
-                <div className="mono keyline">
-                  {reveal[k.api_key_full] ? k.api_key_full : k.api_key_masked}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setReveal((r) => ({
-                        ...r,
-                        [k.api_key_full]: !r[k.api_key_full],
-                      }))
-                    }
-                  >
-                    {reveal[k.api_key_full] ? "隐藏" : "显示"}
-                  </button>
-                </div>
-                <div className="meta mono">
-                  创建 {k.created_at?.slice(0, 10) || "—"} · 最后使用{" "}
-                  {k.last_used_at?.slice(0, 16).replace("T", " ") || "—"}
-                </div>
-                <div className="row">
-                  {k.status === "active" ? (
-                    <button
-                      type="button"
-                      disabled={!!k.is_self}
-                      onClick={() => patchKey(k.api_key_full, { status: "disabled" })}
-                    >
-                      禁用
-                    </button>
-                  ) : k.status === "disabled" ? (
-                    <button
-                      type="button"
-                      onClick={() => patchKey(k.api_key_full, { status: "active" })}
-                    >
-                      重新启用
-                    </button>
-                  ) : null}
-                  {k.status !== "deleted" && (
-                    <button
-                      type="button"
-                      disabled={!!k.is_self}
-                      onClick={() => patchKey(k.api_key_full, { status: "deleted" })}
-                    >
-                      删除
-                    </button>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
         </div>
       )}
 
@@ -433,6 +293,13 @@ export function SettingsPanel({
           color: #7f8fa3;
           text-transform: uppercase;
         }
+        label.chk {
+          flex-direction: row;
+          align-items: center;
+          text-transform: none;
+          font-size: 12px;
+          color: #c5d0dc;
+        }
         input,
         select {
           background: #0e141c;
@@ -470,6 +337,10 @@ export function SettingsPanel({
           color: #7f8fa3;
           line-height: 1.5;
         }
+        .hint code {
+          color: #3dd68c;
+          font-family: var(--mono);
+        }
         fieldset {
           border: 1px solid #1e2a38;
           border-radius: 4px;
@@ -478,25 +349,11 @@ export function SettingsPanel({
         legend {
           font-size: 11px;
           color: #7f8fa3;
-          padding: 0 6px;
-        }
-        .chk {
-          flex-direction: row;
-          align-items: center;
-          text-transform: none;
-          font-size: 13px;
-          color: #d7e0ea;
-          margin-top: 6px;
-        }
-        .msg {
-          color: #3dd68c;
-          font-size: 12px;
         }
         h3 {
-          margin: 8px 0 0;
-          font-size: 12px;
-          color: #7f8fa3;
-          text-transform: uppercase;
+          margin: 4px 0 0;
+          font-size: 13px;
+          color: #d7e0ea;
         }
         .hist {
           list-style: none;
@@ -508,9 +365,8 @@ export function SettingsPanel({
         .hist li {
           display: flex;
           gap: 10px;
-          font-size: 12px;
-          align-items: center;
           flex-wrap: wrap;
+          font-size: 12px;
         }
         .ok {
           color: #3dd68c;
@@ -519,60 +375,11 @@ export function SettingsPanel({
           color: #ff6b6b;
         }
         .err {
-          color: #7f8fa3;
-          font-size: 11px;
-        }
-        .create {
-          display: flex;
-          gap: 8px;
-          flex-wrap: wrap;
-        }
-        .klist {
-          list-style: none;
-          margin: 0;
-          padding: 0;
-          display: grid;
-          gap: 10px;
-        }
-        .klist li {
-          background: #0e141c;
-          border: 1px solid #1e2a38;
-          border-radius: 4px;
-          padding: 10px 12px;
-        }
-        .khead {
-          display: flex;
-          gap: 8px;
-          align-items: center;
-        }
-        .st.active {
-          color: #3dd68c;
-          font-size: 11px;
-        }
-        .st.disabled {
           color: #f0b429;
-          font-size: 11px;
         }
-        .role-b {
-          font-size: 11px;
-          color: #5b8def;
-          font-family: var(--mono);
-        }
-        .keyline {
-          margin-top: 6px;
+        .msg {
           font-size: 12px;
-          display: flex;
-          gap: 8px;
-          align-items: center;
-        }
-        .keyline button {
-          padding: 4px 8px;
-          font-size: 11px;
-        }
-        .meta {
-          margin: 6px 0;
-          font-size: 11px;
-          color: #7f8fa3;
+          color: #9eb2c7;
         }
         .mono {
           font-family: var(--mono);
