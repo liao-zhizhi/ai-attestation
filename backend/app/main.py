@@ -117,10 +117,15 @@ _CORS = [
     o.strip()
     for o in os.environ.get(
         "ATA_CORS_ORIGINS",
-        "http://localhost:3002,http://127.0.0.1:3002",
+        "*",
     ).split(",")
     if o.strip()
 ]
+# Bare "*" → allow all origins (MVP / remote dashboard testing).
+if _CORS == ["*"]:
+    _CORS_ORIGINS: list[str] = ["*"]
+else:
+    _CORS_ORIGINS = _CORS
 
 DB_PATH = init_db()
 ensure_api_key(DEFAULT_DEMO_KEY, label="demo", name="demo", role="admin")
@@ -129,13 +134,21 @@ update_api_key(DEFAULT_DEMO_KEY, role="admin", status="active", name="demo", db_
 start_report_scheduler(db_path=DB_PATH)
 
 app = FastAPI(title=BRAND, version=VERSION)
+# CORS is built into FastAPI/Starlette — no separate fastapi-cors package needed.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_CORS,
-    allow_credentials=True,
+    allow_origins=_CORS_ORIGINS,
+    # Browsers disallow credentials with wildcard origins; disable when "*".
+    allow_credentials=_CORS_ORIGINS != ["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    print(f"[INFO] 收到请求: {request.method} {request.url.path}")
+    return await call_next(request)
 
 
 class IssueKeyBody(BaseModel):

@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 
-const API = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8004";
+const API =
+  process.env.NEXT_PUBLIC_API_BASE_URL ||
+  process.env.NEXT_PUBLIC_API_BASE ||
+  "http://127.0.0.1:8004";
+
 
 type Verification = {
   ok?: boolean;

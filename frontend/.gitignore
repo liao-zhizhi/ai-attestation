@@ -1,4 +1,8 @@
 # ai-attestation frontend
 .next
 node_modules
+.npm-cache
+.env
+.env.local
 .env*.local
+!.env.local.example

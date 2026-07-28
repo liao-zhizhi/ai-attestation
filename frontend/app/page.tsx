@@ -16,7 +16,11 @@ import { ExportDialog } from "@/components/ExportDialog";
 import { Timeline, type ApiCall } from "@/components/Timeline";
 import { TrendCharts, type DayPoint, type VendorSlice } from "@/components/TrendCharts";
 
-const API = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8004";
+const API =
+  process.env.NEXT_PUBLIC_API_BASE_URL ||
+  process.env.NEXT_PUBLIC_API_BASE ||
+  "http://127.0.0.1:8004";
+
 const STORAGE_KEY = "ata_mvp_api_key";
 
 const DEFAULT_FILTERS: QueryFilters = {
