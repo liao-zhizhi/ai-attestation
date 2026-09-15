@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { parseApiError } from "@/lib/api";
+import { parseApiError, localDatetimeToUtcIso } from "@/lib/api";
 
 type Props = {
   apiBase: string;
@@ -34,8 +34,10 @@ export function ExportDialog({ apiBase, apiKey, open, onClose }: Props) {
       if (vendor) q.set("vendor", vendor);
       if (status) q.set("status", status);
       if (timeRange === "custom") {
-        if (customFrom) q.set("custom_from", customFrom);
-        if (customTo) q.set("custom_to", customTo);
+        const fromIso = localDatetimeToUtcIso(customFrom);
+        const toIso = localDatetimeToUtcIso(customTo);
+        if (fromIso) q.set("custom_from", fromIso);
+        if (toIso) q.set("custom_to", toIso);
       }
       const r = await fetch(`${apiBase}/v1/dashboard/calls/export?${q.toString()}`);
       if (!r.ok) throw new Error(await parseApiError(r, "导出失败"));

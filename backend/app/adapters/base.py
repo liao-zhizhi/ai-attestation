@@ -43,6 +43,15 @@ def _json(body: bytes) -> Dict[str, Any]:
         return {}
 
 
+def _safe_int(value: Any) -> int:
+    try:
+        if value is None or value is False:
+            return 0
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
 def openai_style_usage(
     request_body: bytes,
     response_body: bytes,
@@ -61,17 +70,19 @@ def openai_style_usage(
     )
     usage = resp.get("usage") or {}
     if isinstance(usage, dict):
-        prompt = int(
+        prompt = _safe_int(
             usage.get("prompt_tokens")
-            or usage.get("input_tokens")
-            or usage.get("promptTokens")
-            or 0
+            if usage.get("prompt_tokens") is not None
+            else usage.get("input_tokens")
+            if usage.get("input_tokens") is not None
+            else usage.get("promptTokens")
         )
-        completion = int(
+        completion = _safe_int(
             usage.get("completion_tokens")
-            or usage.get("output_tokens")
-            or usage.get("completionTokens")
-            or 0
+            if usage.get("completion_tokens") is not None
+            else usage.get("output_tokens")
+            if usage.get("output_tokens") is not None
+            else usage.get("completionTokens")
         )
     else:
         prompt = completion = 0

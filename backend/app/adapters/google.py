@@ -1,6 +1,6 @@
 from typing import Any, Mapping
 
-from adapters.base import OpenAICompatibleAdapter, ParsedUsage, _json
+from adapters.base import OpenAICompatibleAdapter, ParsedUsage, _json, _safe_int
 
 
 class GoogleAdapter(OpenAICompatibleAdapter):
@@ -34,32 +34,35 @@ class GoogleAdapter(OpenAICompatibleAdapter):
         meta = resp.get("usageMetadata") or {}
         usage = resp.get("usage") or {}
         if isinstance(meta, dict) and meta:
-            prompt = int(
+            prompt = _safe_int(
                 meta.get("promptTokenCount")
-                or meta.get("prompt_token_count")
-                or 0
+                if meta.get("promptTokenCount") is not None
+                else meta.get("prompt_token_count")
             )
-            completion = int(
+            completion = _safe_int(
                 meta.get("candidatesTokenCount")
-                or meta.get("candidates_token_count")
-                or meta.get("outputTokenCount")
-                or 0
+                if meta.get("candidatesTokenCount") is not None
+                else meta.get("candidates_token_count")
+                if meta.get("candidates_token_count") is not None
+                else meta.get("outputTokenCount")
             )
             # Do not invent a prompt/completion split from totalTokenCount —
             # that would skew metering. Keep zeros; record total in extra below.
-            total_tokens = int(meta.get("totalTokenCount") or 0)
+            total_tokens = _safe_int(meta.get("totalTokenCount"))
         elif isinstance(usage, dict):
-            prompt = int(
+            prompt = _safe_int(
                 usage.get("prompt_tokens")
-                or usage.get("input_tokens")
-                or usage.get("promptTokens")
-                or 0
+                if usage.get("prompt_tokens") is not None
+                else usage.get("input_tokens")
+                if usage.get("input_tokens") is not None
+                else usage.get("promptTokens")
             )
-            completion = int(
+            completion = _safe_int(
                 usage.get("completion_tokens")
-                or usage.get("output_tokens")
-                or usage.get("completionTokens")
-                or 0
+                if usage.get("completion_tokens") is not None
+                else usage.get("output_tokens")
+                if usage.get("output_tokens") is not None
+                else usage.get("completionTokens")
             )
             total_tokens = 0
         else:

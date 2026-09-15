@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from adapters.base import OpenAICompatibleAdapter, ParsedUsage, _json, openai_style_usage
+from adapters.base import OpenAICompatibleAdapter, ParsedUsage, _json, openai_style_usage, _safe_int
 
 
 class AnthropicAdapter(OpenAICompatibleAdapter):
@@ -20,8 +20,8 @@ class AnthropicAdapter(OpenAICompatibleAdapter):
 
             req = _json(request_body)
             model = resp.get("model") or req.get("model") or "claude-3-5-sonnet"
-            prompt = int(usage.get("input_tokens") or 0)
-            completion = int(usage.get("output_tokens") or 0)
+            prompt = _safe_int(usage.get("input_tokens"))
+            completion = _safe_int(usage.get("output_tokens"))
             cost = estimate_cost_usd(
                 model=str(model),
                 prompt_tokens=prompt,

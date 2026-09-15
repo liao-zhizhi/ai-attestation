@@ -18,7 +18,8 @@ GENESIS = "0" * 64
 
 _BUFFER: List[Dict[str, Any]] = []
 _TIPS: Dict[str, str] = {}
-_BUF_LOCK = threading.Lock()
+# RLock: flush → insert_call → note_chain_tip may re-enter the same thread.
+_BUF_LOCK = threading.RLock()
 _FLUSH_SIZE = 10
 _FLUSH_INTERVAL = 10.0
 _started = False
@@ -28,8 +29,9 @@ _stop = threading.Event()
 def _flush_locked() -> None:
     """Flush buffer. Caller must hold _BUF_LOCK.
 
-    On insert failure, requeues the failed item and all remaining items
-    (no nested lock acquire — avoids deadlock with non-reentrant Lock).
+    On insert failure, requeues the failed item and all remaining items.
+    Persistence uses ``update_tip=False`` so a failed later insert cannot
+    rewind the in-memory chain tip.
     """
     global _BUFFER
     if not _BUFFER:
@@ -38,7 +40,13 @@ def _flush_locked() -> None:
     _BUFFER = []
     for i, item in enumerate(batch):
         try:
-            insert_call(item["record"], db_path=item.get("db_path"))
+            # Tip was already advanced at enqueue time. Re-noting during flush
+            # would rewind _TIPS if a later insert fails (fork the chain).
+            insert_call(
+                item["record"],
+                db_path=item.get("db_path"),
+                update_tip=False,
+            )
         except Exception:
             # Restore failed + not-yet-written items at the front
             _BUFFER = batch[i:] + _BUFFER

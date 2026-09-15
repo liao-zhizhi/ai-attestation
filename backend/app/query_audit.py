@@ -25,6 +25,41 @@ from key_auth import require_key
 from write_buffer import build_next_record
 
 
+def coerce_iso_ts(value: Optional[str]) -> Optional[str]:
+    """Normalize timestamps so SQLite string compare matches utc_now() layout.
+
+    ``datetime-local`` inputs look like ``2026-09-16T08:00`` (no TZ). Prefer
+    the frontend converting to UTC; this pads leftover naive values so they
+    still compare against ``%Y-%m-%dT%H:%M:%S.%fZ`` rows.
+    """
+    if value is None:
+        return None
+    s = str(value).strip()
+    if not s:
+        return None
+    if "T" not in s:
+        return s
+    has_offset = s.endswith("Z") or s.endswith("z") or (
+        len(s) > 10 and ("+" in s[10:] or s.count("-") > 2)
+    )
+    if not has_offset:
+        if len(s) == 16:
+            s = s + ":00"
+        if len(s) == 19:
+            s = s + ".000000Z"
+        elif "." in s:
+            s = s + "Z"
+        else:
+            s = s + ".000000Z"
+    if s.endswith("Z") and "." in s:
+        head, frac = s[:-1].split(".", 1)
+        frac = (frac + "000000")[:6]
+        s = f"{head}.{frac}Z"
+    elif s.endswith("Z") and "." not in s:
+        s = s[:-1] + ".000000Z"
+    return s
+
+
 def _parse_time_range(
     time_range: str,
     *,
@@ -43,7 +78,7 @@ def _parse_time_range(
     if tr in ("30d", "30days", "last_30_days"):
         return (now - timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%S.%fZ"), None
     if tr == "custom":
-        return custom_from, custom_to
+        return coerce_iso_ts(custom_from), coerce_iso_ts(custom_to)
     return None, None
 
 
@@ -66,6 +101,8 @@ def normalize_params(raw: Mapping[str, Any]) -> Dict[str, Any]:
         custom_from=raw.get("custom_from"),
         custom_to=raw.get("custom_to"),
     )
+    ts_from = coerce_iso_ts(ts_from)
+    ts_to = coerce_iso_ts(ts_to)
     params = {
         "time_range": tr,
         "custom_from": raw.get("custom_from") or None,

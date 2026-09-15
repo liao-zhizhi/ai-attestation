@@ -17,7 +17,8 @@ import { ExportDialog } from "@/components/ExportDialog";
 import { Timeline, type ApiCall } from "@/components/Timeline";
 import { TrendCharts, type DayPoint, type VendorSlice } from "@/components/TrendCharts";
 import { UserGuide } from "@/components/UserGuide";
-import { resolveApiBase, parseApiError, formatDetail, withApiKey } from "@/lib/api";
+import { ResearchTab } from "@/components/ResearchTab";
+import { resolveApiBase, parseApiError, formatDetail, withApiKey, localDatetimeToUtcIso, utcIsoToLocalDatetime } from "@/lib/api";
 
 const STORAGE_KEY = "ata_mvp_api_key";
 const AUTH_STORAGE_KEY = "ata_mvp_authorization";
@@ -277,8 +278,8 @@ export default function HomePage() {
     return {
       api_key: apiKey,
       time_range: f.time_range,
-      custom_from: f.custom_from || null,
-      custom_to: f.custom_to || null,
+      custom_from: localDatetimeToUtcIso(f.custom_from) || null,
+      custom_to: localDatetimeToUtcIso(f.custom_to) || null,
       endpoint: f.endpoint.trim() || null,
       min_cost: f.min_cost === "" ? null : Number(f.min_cost),
       max_cost: f.max_cost === "" ? null : Number(f.max_cost),
@@ -316,8 +317,8 @@ export default function HomePage() {
     const p = (item.query_params || {}) as Record<string, unknown>;
     const next: QueryFilters = {
       time_range: String(p.time_range || "7d"),
-      custom_from: p.custom_from ? String(p.custom_from) : undefined,
-      custom_to: p.custom_to ? String(p.custom_to) : undefined,
+      custom_from: utcIsoToLocalDatetime(p.custom_from),
+      custom_to: utcIsoToLocalDatetime(p.custom_to),
       endpoint: p.endpoint ? String(p.endpoint) : "",
       min_cost: p.min_cost != null ? String(p.min_cost) : "",
       max_cost: p.max_cost != null ? String(p.max_cost) : "",
@@ -447,6 +448,7 @@ export default function HomePage() {
           <div>
             <div className="brand">
               {nav === "guide" && "操作手册"}
+              {nav === "research" && "科研见证"}
               {nav === "dashboard" && "仪表盘"}
               {nav === "calls" && "API 调用记录"}
               {nav === "compliance" && "合规管理"}
@@ -489,6 +491,15 @@ export default function HomePage() {
         )}
 
         {nav === "guide" && <UserGuide proxyUrl={proxyUrl} />}
+
+        {nav === "research" && (
+          <ResearchTab
+            apiBase={apiBase}
+            apiKey={apiKey}
+            canWrite={canWrite}
+            onChainUpdated={() => refresh(apiKey)}
+          />
+        )}
 
         {(nav === "dashboard" || nav === "calls") && queryOpen && (
           <>

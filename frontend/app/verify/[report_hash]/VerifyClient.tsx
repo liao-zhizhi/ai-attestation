@@ -96,7 +96,11 @@ export default function VerifyClient() {
     setBusy(true);
     setErr(null);
     try {
-      const r = await fetch(`${apiBase}/v1/public/verify?p=${encodeURIComponent(token)}`);
+      const r = await fetch(`${apiBase}/v1/public/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
       if (!r.ok) throw new Error(await r.text());
       const d = await r.json();
       setPack(d.pack || null);

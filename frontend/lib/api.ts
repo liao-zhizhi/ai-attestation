@@ -2,6 +2,28 @@
 
 export { resolveApiBase } from "./apiBase";
 
+/** Convert `<input type="datetime-local">` (no timezone) to UTC ISO the API stores. */
+export function localDatetimeToUtcIso(value?: string | null): string | null {
+  const raw = (value || "").trim();
+  if (!raw) return null;
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+  const iso = d.toISOString();
+  return iso.replace(/\.(\d{3})Z$/, (_m, ms: string) => `.${ms}000Z`);
+}
+
+/** Inverse of localDatetimeToUtcIso for datetime-local inputs. */
+export function utcIsoToLocalDatetime(value?: unknown): string | undefined {
+  if (value == null || value === "") return undefined;
+  const d = new Date(String(value));
+  if (Number.isNaN(d.getTime())) {
+    const s = String(value);
+    return s.length >= 16 ? s.slice(0, 16) : s;
+  }
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 /** Append api_key query param (dashboard GET style). */
 export function withApiKey(url: string, apiKey: string): string {
   const join = url.includes("?") ? "&" : "?";

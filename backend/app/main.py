@@ -38,10 +38,12 @@ from attestation import (
     verify_single_compliance,
     verify_single_drift_mark,
     verify_single_query,
+    verify_single_research_artifact,
 )
 from models import (
     ensure_api_key,
     count_calls,
+    sum_call_cost,
     create_api_key_record,
     dashboard_overview,
     get_baseline,
@@ -49,6 +51,7 @@ from models import (
     get_compliance,
     get_drift_mark,
     get_query,
+    get_research_artifact,
     get_report_subscription_for_key,
     init_db,
     insert_call,
@@ -68,6 +71,8 @@ from metering import estimate_cost_usd
 from proxy import forward_openai
 from query_audit import execute_attested_query
 from key_auth import mask_key, require_key, resolve_api_key
+from research import get_artifact_detail, list_artifacts_for_key, register_artifact
+from research_cert import build_priority_certificate_zip, certificate_filename
 from report_mail import send_subscription_async, start_report_scheduler
 from export_calls import iter_export_rows, rows_to_csv, rows_to_json
 from compliance import (
@@ -118,8 +123,8 @@ _CORS = [
     o.strip()
     for o in os.environ.get(
         "ATA_CORS_ORIGINS",
-        # Explicit dashboard origins + wildcard for MVP remote testing.
-        "*,http://47.119.118.245:3002,http://localhost:3002,http://127.0.0.1:3002",
+        # Local dashboard / marketing defaults. Opt into "*" via env if needed.
+        "http://localhost:3002,http://127.0.0.1:3002,http://localhost:3003,http://127.0.0.1:3003,http://localhost:3000,http://127.0.0.1:3000",
     ).split(",")
     if o.strip()
 ]
@@ -129,11 +134,13 @@ _CORS_ORIGINS: list[str] = (
     if _ALLOW_ALL
     else _CORS
 )
-# Always keep common local + deploy origins even when env is a custom list.
+# Always keep common local origins even when env is a custom list.
+# (A previous deploy IP was hardcoded here; keep local loopback only.)
 for _o in (
-    "http://47.119.118.245:3002",
     "http://localhost:3002",
     "http://127.0.0.1:3002",
+    "http://localhost:3003",
+    "http://127.0.0.1:3003",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
 ):
@@ -148,13 +155,13 @@ start_report_scheduler(db_path=DB_PATH)
 
 app = FastAPI(title=BRAND, version=VERSION)
 # CORS is built into FastAPI/Starlette — no separate fastapi-cors package needed.
-# When ATA_CORS_ORIGINS includes "*", also match any http(s) Origin via regex so
-# Access-Control-Allow-Origin echoes the request Origin (works with credentials).
+# Wildcard + credentials would echo any Origin (browser CORS bypass). Dashboard
+# auth is header/query API keys, so credentials are only needed for explicit origins.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_CORS_ORIGINS,
-    allow_origin_regex=r"https?://.*" if _ALLOW_ALL else None,
-    allow_credentials=True,
+    allow_origins=["*"] if _ALLOW_ALL else _CORS_ORIGINS,
+    allow_origin_regex=None,
+    allow_credentials=not _ALLOW_ALL,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
@@ -614,7 +621,6 @@ def dashboard_attestation(api_key: str = Query(..., min_length=8)) -> Dict[str, 
     require_key(api_key, min_role="read_only", db_path=DB_PATH)
     proof = verify_key_chain(api_key, db_path=DB_PATH)
     chain = list_chain(api_key, limit=12, db_path=DB_PATH)
-    calls = list_calls(api_key, limit=500, db_path=DB_PATH)
     latest = proof.get("latest_hash") or GENESIS
     return {
         "api_key_suffix": api_key[-6:],
@@ -625,12 +631,13 @@ def dashboard_attestation(api_key: str = Query(..., min_length=8)) -> Dict[str, 
         "broken_at": proof.get("broken_at"),
         "genesis": GENESIS,
         "links_preview": chain,
-        "total_cost_usd": round(sum(float(c.get("cost_usd") or 0) for c in calls), 6),
+        "total_cost_usd": round(sum_call_cost(api_key, db_path=DB_PATH), 6),
         "n_calls": proof.get("n_calls", 0),
         "n_queries": proof.get("n_queries", 0),
         "n_compliance": proof.get("n_compliance", 0),
         "n_baselines": proof.get("n_baselines", 0),
         "n_drift_marks": proof.get("n_drift_marks", 0),
+        "n_research_artifacts": proof.get("n_research_artifacts", 0),
         "blockchain_anchor": latest_anchor(api_key, db_path=DB_PATH),
     }
 
@@ -1427,3 +1434,89 @@ def behavior_mark_detail(
     if not row or row.get("api_key") != api_key:
         raise HTTPException(404, "mark not found")
     return {"mark": row, "proof": verify_single_drift_mark(row)}
+
+
+# ── 科研优先权见证（P0：新端点，不改 /v1/proxy）────────────────────────────
+
+
+class ResearchArtifactBody(BaseModel):
+    """只接受客户端算好的指纹。禁止附带原文。"""
+
+    model_config = {"extra": "forbid"}
+
+    api_key: str = Field(..., min_length=8)
+    title: str = Field(..., min_length=1, max_length=200)
+    kind: str = Field(default="draft", max_length=32)
+    artifact_hash: str = Field(
+        ...,
+        min_length=64,
+        max_length=64,
+        pattern=r"^[0-9a-fA-F]{64}$",
+        description="客户端 SHA-256，64 位十六进制；禁止原文",
+    )
+    byte_length: Optional[int] = Field(default=None, ge=0)
+    filename_hint: Optional[str] = Field(default=None, max_length=240)
+    authors_label: Optional[str] = Field(default=None, max_length=120)
+    description: Optional[str] = Field(default=None, max_length=2000)
+    client_hashed: bool = True
+
+
+@app.post("/v1/research/artifacts")
+def research_artifacts_create(body: ResearchArtifactBody) -> Dict[str, Any]:
+    try:
+        return register_artifact(
+            api_key=body.api_key,
+            title=body.title,
+            kind=body.kind,
+            artifact_hash=body.artifact_hash,
+            byte_length=body.byte_length,
+            filename_hint=body.filename_hint,
+            authors_label=body.authors_label,
+            description=body.description,
+            client_hashed=body.client_hashed,
+            db_path=DB_PATH,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.get("/v1/research/artifacts")
+def research_artifacts_list(
+    api_key: str = Query(..., min_length=8),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+) -> Dict[str, Any]:
+    return list_artifacts_for_key(
+        api_key=api_key, limit=limit, offset=offset, db_path=DB_PATH
+    )
+
+
+@app.get("/v1/research/artifacts/{artifact_id}")
+def research_artifacts_get(
+    artifact_id: str, api_key: str = Query(..., min_length=8)
+) -> Dict[str, Any]:
+    out = get_artifact_detail(
+        api_key=api_key, artifact_id=artifact_id, db_path=DB_PATH
+    )
+    if not out:
+        raise HTTPException(404, "artifact not found")
+    return out
+
+
+@app.get("/v1/research/artifacts/{artifact_id}/certificate")
+def research_artifacts_certificate(
+    artifact_id: str, api_key: str = Depends(resolve_api_key)
+) -> Response:
+    """下载优先权证书 ZIP（不含原文、不含 api_key）。"""
+    require_key(api_key, min_role="read_only", db_path=DB_PATH)
+    row = get_research_artifact(artifact_id, db_path=DB_PATH)
+    if not row or row.get("api_key") != api_key:
+        raise HTTPException(404, "artifact not found")
+    proof = verify_single_research_artifact(row)
+    zbytes = build_priority_certificate_zip(row=row, verification=proof)
+    name = certificate_filename(artifact_id)
+    return Response(
+        content=zbytes,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )

@@ -24,8 +24,14 @@ def _default_db_path() -> Path:
 def connect(db_path: Optional[Path] = None) -> sqlite3.Connection:
     path = Path(db_path) if db_path else _default_db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(path), check_same_thread=False)
+    conn = sqlite3.connect(str(path), check_same_thread=False, timeout=30.0)
     conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("PRAGMA busy_timeout=30000")
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+    except sqlite3.Error:
+        pass
     return conn
 
 
@@ -104,6 +110,33 @@ def _migrate(conn: sqlite3.Connection) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_report_hist_sub
           ON report_history(subscription_id, sent_at DESC);
+
+        CREATE TABLE IF NOT EXISTS research_artifacts (
+          id TEXT PRIMARY KEY,
+          api_key TEXT NOT NULL,
+          timestamp TEXT NOT NULL,
+          title TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          artifact_hash TEXT NOT NULL,
+          hash_alg TEXT NOT NULL DEFAULT 'sha256',
+          byte_length INTEGER,
+          filename_hint TEXT,
+          authors_label TEXT,
+          description TEXT,
+          client_hashed INTEGER NOT NULL DEFAULT 1,
+          prev_hash TEXT NOT NULL,
+          chain_hash TEXT NOT NULL,
+          attest_id TEXT NOT NULL,
+          tsa_receipt TEXT,
+          status TEXT NOT NULL DEFAULT 'active',
+          superseded_by TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_research_art_key_ts
+          ON research_artifacts(api_key, timestamp DESC);
+        CREATE INDEX IF NOT EXISTS idx_research_art_hash
+          ON research_artifacts(api_key, artifact_hash);
+        CREATE INDEX IF NOT EXISTS idx_research_art_chain
+          ON research_artifacts(chain_hash);
         """
     )
 
@@ -259,6 +292,33 @@ def init_db(db_path: Optional[Path] = None) -> Path:
                 );
                 CREATE INDEX IF NOT EXISTS idx_report_hist_sub
                   ON report_history(subscription_id, sent_at DESC);
+
+                CREATE TABLE IF NOT EXISTS research_artifacts (
+                  id TEXT PRIMARY KEY,
+                  api_key TEXT NOT NULL,
+                  timestamp TEXT NOT NULL,
+                  title TEXT NOT NULL,
+                  kind TEXT NOT NULL,
+                  artifact_hash TEXT NOT NULL,
+                  hash_alg TEXT NOT NULL DEFAULT 'sha256',
+                  byte_length INTEGER,
+                  filename_hint TEXT,
+                  authors_label TEXT,
+                  description TEXT,
+                  client_hashed INTEGER NOT NULL DEFAULT 1,
+                  prev_hash TEXT NOT NULL,
+                  chain_hash TEXT NOT NULL,
+                  attest_id TEXT NOT NULL,
+                  tsa_receipt TEXT,
+                  status TEXT NOT NULL DEFAULT 'active',
+                  superseded_by TEXT
+                );
+                CREATE INDEX IF NOT EXISTS idx_research_art_key_ts
+                  ON research_artifacts(api_key, timestamp DESC);
+                CREATE INDEX IF NOT EXISTS idx_research_art_hash
+                  ON research_artifacts(api_key, artifact_hash);
+                CREATE INDEX IF NOT EXISTS idx_research_art_chain
+                  ON research_artifacts(chain_hash);
                 """
             )
             _migrate(conn)
@@ -275,7 +335,12 @@ def _note_tip(api_key: str, chain_hash: str) -> None:
     note_chain_tip(api_key, chain_hash)
 
 
-def insert_call(row: Dict[str, Any], *, db_path: Optional[Path] = None) -> None:
+def insert_call(
+    row: Dict[str, Any],
+    *,
+    db_path: Optional[Path] = None,
+    update_tip: bool = True,
+) -> None:
     with _lock:
         conn = connect(db_path)
         try:
@@ -328,7 +393,8 @@ def insert_call(row: Dict[str, Any], *, db_path: Optional[Path] = None) -> None:
             conn.commit()
         finally:
             conn.close()
-    _note_tip(row["api_key"], row["chain_hash"])
+    if update_tip:
+        _note_tip(row["api_key"], row["chain_hash"])
 
 
 def insert_query(row: Dict[str, Any], *, db_path: Optional[Path] = None) -> None:
@@ -815,6 +881,20 @@ def count_calls(api_key: str, *, db_path: Optional[Path] = None) -> int:
             conn.close()
 
 
+def sum_call_cost(api_key: str, *, db_path: Optional[Path] = None) -> float:
+    """Full-table cost total (not capped by list_calls pagination)."""
+    with _lock:
+        conn = connect(db_path)
+        try:
+            row = conn.execute(
+                "SELECT COALESCE(SUM(cost_usd), 0) AS cost FROM api_calls WHERE api_key=?",
+                (api_key,),
+            ).fetchone()
+            return float(row["cost"] if row else 0)
+        finally:
+            conn.close()
+
+
 def dashboard_overview(api_key: str, *, db_path: Optional[Path] = None) -> Dict[str, Any]:
     """Aggregates for overview cards + 7-day trends + vendor pie (today)."""
     from datetime import datetime, timedelta, timezone
@@ -1113,6 +1193,168 @@ def count_chain_links(api_key: str, *, db_path: Optional[Path] = None) -> int:
             conn.close()
 
 
+def _parse_research_artifact(d: Dict[str, Any]) -> Dict[str, Any]:
+    """解析科研工件行：TSA JSON、布尔字段。不含原文。"""
+    raw = d.get("tsa_receipt")
+    if isinstance(raw, str) and raw.strip():
+        try:
+            d["tsa_receipt"] = json.loads(raw)
+        except json.JSONDecodeError:
+            d["tsa_receipt"] = {}
+    elif not isinstance(raw, dict):
+        d["tsa_receipt"] = None
+    d["client_hashed"] = bool(d.get("client_hashed"))
+    return d
+
+
+def insert_research_artifact(row: Dict[str, Any], *, db_path: Optional[Path] = None) -> None:
+    """写入科研工件并追加 attestation_chain（event_type=research_artifact）。"""
+    tsa = row.get("tsa_receipt")
+    tsa_json = (
+        tsa
+        if isinstance(tsa, str)
+        else json.dumps(tsa or {}, ensure_ascii=False)
+        if tsa
+        else None
+    )
+    with _lock:
+        conn = connect(db_path)
+        try:
+            conn.execute(
+                """
+                INSERT INTO research_artifacts (
+                  id, api_key, timestamp, title, kind, artifact_hash, hash_alg,
+                  byte_length, filename_hint, authors_label, description,
+                  client_hashed, prev_hash, chain_hash, attest_id, tsa_receipt,
+                  status, superseded_by
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    row["id"],
+                    row["api_key"],
+                    row["timestamp"],
+                    row["title"],
+                    row["kind"],
+                    row["artifact_hash"],
+                    row.get("hash_alg") or "sha256",
+                    row.get("byte_length"),
+                    row.get("filename_hint"),
+                    row.get("authors_label"),
+                    row.get("description"),
+                    1 if row.get("client_hashed", True) else 0,
+                    row["prev_hash"],
+                    row["chain_hash"],
+                    row["attest_id"],
+                    tsa_json,
+                    row.get("status") or "active",
+                    row.get("superseded_by"),
+                ),
+            )
+            conn.execute(
+                """
+                INSERT INTO attestation_chain
+                  (id, api_key, call_id, hash, prev_hash, timestamp, event_type, ref_id)
+                VALUES (?,?,?,?,?,?, 'research_artifact', ?)
+                """,
+                (
+                    row["attest_id"],
+                    row["api_key"],
+                    row["id"],
+                    row["chain_hash"],
+                    row["prev_hash"],
+                    row["timestamp"],
+                    row["id"],
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    _note_tip(row["api_key"], row["chain_hash"])
+
+
+def count_research_artifacts(api_key: str, *, db_path: Optional[Path] = None) -> int:
+    with _lock:
+        conn = connect(db_path)
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) AS n FROM research_artifacts WHERE api_key=?",
+                (api_key,),
+            ).fetchone()
+            return int(row["n"] if row else 0)
+        finally:
+            conn.close()
+
+
+def list_research_artifacts(
+    api_key: str,
+    *,
+    limit: int = 50,
+    offset: int = 0,
+    db_path: Optional[Path] = None,
+) -> List[Dict[str, Any]]:
+    with _lock:
+        conn = connect(db_path)
+        try:
+            rows = conn.execute(
+                """
+                SELECT * FROM research_artifacts
+                WHERE api_key=? ORDER BY timestamp DESC LIMIT ? OFFSET ?
+                """,
+                (api_key, int(limit), int(offset)),
+            ).fetchall()
+            return [_parse_research_artifact(dict(r)) for r in rows]
+        finally:
+            conn.close()
+
+
+def get_research_artifact(
+    artifact_id: str, *, db_path: Optional[Path] = None
+) -> Optional[Dict[str, Any]]:
+    with _lock:
+        conn = connect(db_path)
+        try:
+            row = conn.execute(
+                "SELECT * FROM research_artifacts WHERE id=?", (artifact_id,)
+            ).fetchone()
+            return _parse_research_artifact(dict(row)) if row else None
+        finally:
+            conn.close()
+
+
+def list_prior_artifact_hashes(
+    api_key: str,
+    artifact_hash: str,
+    *,
+    exclude_id: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> List[Dict[str, Any]]:
+    """同一指纹的历史登记（允许重复；用于「该指纹已于某时登记过」）。"""
+    with _lock:
+        conn = connect(db_path)
+        try:
+            if exclude_id:
+                rows = conn.execute(
+                    """
+                    SELECT id, timestamp, title FROM research_artifacts
+                    WHERE api_key=? AND artifact_hash=? AND id!=?
+                    ORDER BY timestamp ASC
+                    """,
+                    (api_key, artifact_hash, exclude_id),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT id, timestamp, title FROM research_artifacts
+                    WHERE api_key=? AND artifact_hash=?
+                    ORDER BY timestamp ASC
+                    """,
+                    (api_key, artifact_hash),
+                ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            conn.close()
+
+
 def enrich_maps_for_chain(
     api_key: str,
     chain_rows: List[Dict[str, Any]],
@@ -1125,6 +1367,7 @@ def enrich_maps_for_chain(
     comps: Dict[str, Dict[str, Any]] = {}
     bas: Dict[str, Dict[str, Any]] = {}
     marks: Dict[str, Dict[str, Any]] = {}
+    arts: Dict[str, Dict[str, Any]] = {}
     for row in chain_rows:
         et = str(row.get("event_type") or "call")
         ref = str(row.get("ref_id") or row.get("call_id") or "")
@@ -1154,6 +1397,12 @@ def enrich_maps_for_chain(
             m = get_drift_mark(ref, db_path=db_path)
             if m and m.get("api_key") == api_key:
                 marks[ref] = m
+        elif et == "research_artifact":
+            if ref in arts:
+                continue
+            a = get_research_artifact(ref, db_path=db_path)
+            if a and a.get("api_key") == api_key:
+                arts[ref] = a
         else:
             if ref in calls:
                 continue
@@ -1166,6 +1415,7 @@ def enrich_maps_for_chain(
         "compliance_by_id": comps,
         "baselines_by_id": bas,
         "drift_marks_by_id": marks,
+        "artifacts_by_id": arts,
     }
 
 

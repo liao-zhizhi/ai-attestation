@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from models import query_calls
+from query_audit import coerce_iso_ts
 
 
 def _parse_range(
@@ -29,7 +30,7 @@ def _parse_range(
     if tr in ("30d", "30days"):
         return (now - timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%S.%fZ"), None
     if tr == "custom":
-        return custom_from, custom_to
+        return coerce_iso_ts(custom_from), coerce_iso_ts(custom_to)
     return None, None
 
 
