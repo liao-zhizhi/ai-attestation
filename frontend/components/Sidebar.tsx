@@ -48,7 +48,9 @@ export function Sidebar({
   copied,
   showSettings = true,
 }: Props) {
-  const suffix = apiKey.length >= 6 ? `…${apiKey.slice(-6)}` : "—";
+  const keyTrim = apiKey.trim();
+  const hasKey = keyTrim.length > 0;
+  const masked = hasKey ? `${keyTrim.slice(0, 8)}****` : "";
   const onboard = showSettings
     ? ONBOARD
     : ONBOARD.filter((i) => i.id !== "settings" && i.id !== "keys");
@@ -84,7 +86,19 @@ export function Sidebar({
         ))}
       </nav>
       <div className="foot">
-        <div className="k mono">Key {suffix}</div>
+        {hasKey ? (
+          <div className="k mono" title={keyTrim}>
+            当前 Key: {masked}
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="nokey"
+            onClick={() => onNavigate("keys")}
+          >
+            未设置 Key，去创建
+          </button>
+        )}
         <div className="url mono" title={proxyUrl}>
           {proxyUrl}
         </div>
@@ -174,8 +188,20 @@ export function Sidebar({
           gap: 8px;
         }
         .k {
-          font-size: 11px;
-          color: #7f8fa3;
+          font-size: 12px;
+          color: #9eb2c7;
+          padding: 9px 10px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .nokey {
+          color: #fb923c !important;
+          white-space: normal;
+          line-height: 1.35;
+        }
+        .nokey:hover {
+          color: #fdba74 !important;
         }
         .copy {
           background: #152033 !important;
