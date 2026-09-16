@@ -53,7 +53,7 @@ const VENDOR_COLORS = [
 ];
 
 export default function HomePage() {
-  const [nav, setNav] = useState<NavId>("guide");
+  const [nav, setNav] = useState<NavId>("keys");
   // Start from build-time env; resolveApiBase() corrects remote→localhost mistakes after mount.
   const [apiBase, setApiBase] = useState(envApiBase);
   const [apiReady, setApiReady] = useState(false);
@@ -125,8 +125,13 @@ export default function HomePage() {
     const saved = localStorage.getItem(STORAGE_KEY);
     const savedAuth = localStorage.getItem(AUTH_STORAGE_KEY);
     if (savedAuth) setAuthorization(savedAuth);
-    if (saved) setApiKey(saved);
-    else {
+    if (saved) {
+      setApiKey(saved);
+      // 已有 Key：默认进入「仪表盘」
+      setNav("dashboard");
+    } else {
+      // 首次访问：默认高亮「Key 管理」
+      setNav("keys");
       fetch(`${apiBase}/health`)
         .then((r) => r.json())
         .then((d) => {
@@ -448,14 +453,14 @@ export default function HomePage() {
           <div>
             <div className="brand">
               {nav === "guide" && "操作手册"}
-              {nav === "research" && "科研见证"}
+              {nav === "research" && "见证"}
               {nav === "dashboard" && "仪表盘"}
               {nav === "calls" && "API 调用记录"}
               {nav === "compliance" && "合规管理"}
-              {nav === "behavior" && "行为监控"}
+              {nav === "behavior" && "监控"}
               {nav === "attestation" && "防篡改证明"}
               {nav === "settings" && "设置"}
-              {nav === "keys" && "Key"}
+              {nav === "keys" && "Key 管理"}
             </div>
             <div className="sub">独立验证与对账 · MVP</div>
           </div>
