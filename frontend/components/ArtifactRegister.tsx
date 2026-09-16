@@ -114,6 +114,10 @@ export function ArtifactRegister({ apiBase, apiKey, canWrite, onRegistered }: Pr
   }
 
   async function submit() {
+    if (!apiKey) {
+      setErr("请先到左侧「设置」填写 API Key 并点「保存」，然后再写入证据链。");
+      return;
+    }
     if (!canWrite) {
       setErr("需要 read_write 或 admin 才能写入证据链");
       return;
@@ -159,11 +163,18 @@ export function ArtifactRegister({ apiBase, apiKey, canWrite, onRegistered }: Pr
 
   return (
     <section className="reg">
+      {/* 无 Key 时也必须能点开表单：disabled 在深色主题上几乎看不出，点击会被浏览器直接吞掉 */}
       <button
         type="button"
         className="accent"
-        onClick={() => setOpen(true)}
-        disabled={!apiKey}
+        aria-expanded={open}
+        onClick={() => {
+          setOpen(true);
+          setErr(null);
+          if (!apiKey) {
+            setErr("请先到左侧「设置」填写 API Key 并点「保存」，然后再写入证据链。");
+          }
+        }}
       >
         登记一份草稿或提示词
       </button>
@@ -327,6 +338,10 @@ export function ArtifactRegister({ apiBase, apiKey, canWrite, onRegistered }: Pr
           background: #1a3d2c;
           border-color: #2a5c42;
           color: #3dd68c;
+        }
+        button:disabled {
+          opacity: 0.45;
+          cursor: not-allowed;
         }
         label {
           display: flex;
