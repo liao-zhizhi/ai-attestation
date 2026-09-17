@@ -164,3 +164,65 @@ def test_export_csv_bom():
         assert b"deepseek" in js
     finally:
         td.cleanup()
+
+
+def test_put_report_subscription_422_403_and_ok(monkeypatch):
+    """空邮箱 → 422；read_only → 403；read_write 合法体 → 200。"""
+    from fastapi.testclient import TestClient
+
+    td, db = _db()
+    try:
+        rw = "ata_test_rsub_rw_0001"
+        ro = "ata_test_rsub_ro_0001"
+        ensure_api_key(rw, label="rw", role="read_write", db_path=db)
+        ensure_api_key(ro, label="ro", role="read_only", db_path=db)
+
+        import main as main_mod
+
+        monkeypatch.setattr(main_mod, "DB_PATH", db)
+        client = TestClient(main_mod.app)
+        url = "/v1/dashboard/settings/report-subscription"
+        opts = {
+            "api_overview": True,
+            "drift_summary": True,
+            "compliance_summary": True,
+        }
+
+        empty = client.put(
+            url,
+            json={
+                "api_key": rw,
+                "email": "",
+                "frequency": "weekly",
+                "content_options": opts,
+            },
+        )
+        assert empty.status_code == 422, empty.text
+
+        forbidden = client.put(
+            url,
+            json={
+                "api_key": ro,
+                "email": "ops@example.com",
+                "frequency": "weekly",
+                "content_options": opts,
+            },
+        )
+        assert forbidden.status_code == 403, forbidden.text
+
+        ok = client.put(
+            url,
+            json={
+                "api_key": rw,
+                "email": "audit@example.com, ciso@example.com",
+                "frequency": "weekly",
+                "content_options": opts,
+            },
+        )
+        assert ok.status_code == 200, ok.text
+        sub = ok.json()["subscription"]
+        assert "audit@example.com" in sub["email"]
+        assert sub["frequency"] == "weekly"
+        assert sub["content_options"]["api_overview"] is True
+    finally:
+        td.cleanup()

@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from anchoring import (
     anchor_chain_head,
@@ -86,7 +86,7 @@ from research_timeline import (
     list_timeline,
     unlink_timeline,
 )
-from report_mail import send_subscription_async, start_report_scheduler
+from report_mail import parse_emails, send_subscription_async, start_report_scheduler
 from export_calls import iter_export_rows, rows_to_csv, rows_to_json
 from compliance import (
     check_evidence_detail,
@@ -244,17 +244,36 @@ def issue_key(body: IssueKeyBody, request: Request) -> Dict[str, Any]:
 # ── Settings: report subscriptions ──────────────────────────────────────────
 
 
+class ReportContentOptions(BaseModel):
+    """与设置页三个勾选框对齐；缺省视为开启。"""
+
+    api_overview: bool = True
+    drift_summary: bool = True
+    compliance_summary: bool = True
+
+
 class ReportSubBody(BaseModel):
+    """PUT 报告订阅：字段名与前端 SettingsPanel 一致。"""
+
     api_key: str = Field(..., min_length=8)
-    email: str = Field(..., min_length=3, max_length=500)
+    email: str = Field(..., min_length=1, max_length=500)
     frequency: str = Field(default="weekly", pattern="^(daily|weekly|monthly)$")
-    content_options: Dict[str, bool] = Field(
-        default_factory=lambda: {
-            "api_overview": True,
-            "drift_summary": True,
-            "compliance_summary": True,
-        }
-    )
+    content_options: ReportContentOptions = Field(default_factory=ReportContentOptions)
+
+    @field_validator("email")
+    @classmethod
+    def _emails_must_parse(cls, v: str) -> str:
+        # 前端支持逗号/分号分隔多个邮箱，规则与发信 parse_emails 一致
+        raw = (v or "").strip()
+        if not parse_emails(raw):
+            raise ValueError("需要至少一个含 @ 的邮箱，多个用逗号分隔")
+        return raw
+
+    @field_validator("frequency", mode="before")
+    @classmethod
+    def _freq_norm(cls, v: Any) -> str:
+        s = str(v or "weekly").strip().lower()
+        return s or "weekly"
 
 
 @app.get("/v1/dashboard/settings/report-subscription")
@@ -284,7 +303,7 @@ def put_report_sub(body: ReportSubBody) -> Dict[str, Any]:
             "api_key": body.api_key,
             "email": body.email.strip(),
             "frequency": body.frequency,
-            "content_options": body.content_options,
+            "content_options": body.content_options.model_dump(),
             "last_sent_at": existing.get("last_sent_at") if existing else None,
             "created_at": created,
         },

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { formatDetail, withApiKey } from "@/lib/api";
+import { formatDetail, parseApiError, withApiKey } from "@/lib/api";
 
 type SubTab = "general" | "reports";
 
@@ -76,18 +76,33 @@ export function SettingsPanel({
 
   async function saveSub() {
     setSubMsg(null);
+    const trimmedEmail = email.trim();
+    // 与后端 parse_emails 对齐：至少一个含 @ 的地址，避免空邮箱打成 422 却提示权限
+    if (!trimmedEmail || !trimmedEmail.includes("@")) {
+      setSubMsg("请填写接收邮箱");
+      return;
+    }
     const r = await fetch(`${apiBase}/v1/dashboard/settings/report-subscription`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         api_key: apiKey,
-        email,
+        email: trimmedEmail,
         frequency,
         content_options: opts,
       }),
     });
     if (!r.ok) {
-      setSubMsg("保存失败（需要 read_write 及以上权限）");
+      // 422 是请求体校验失败；403 才是权限不足。不要一律显示权限提示。
+      if (r.status === 422) {
+        setSubMsg("保存失败（请求格式错误）");
+        return;
+      }
+      if (r.status === 403) {
+        setSubMsg("保存失败（权限不足）");
+        return;
+      }
+      setSubMsg(await parseApiError(r, "保存失败"));
       return;
     }
     setSubMsg("订阅已保存");
