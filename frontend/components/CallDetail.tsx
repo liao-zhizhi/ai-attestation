@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import type { ApiCall } from "./Timeline";
+import { ShareLinkDialog } from "./ShareLinkDialog";
 
 type Proof = { ok: boolean; message?: string; expected_hash?: string; actual_hash?: string };
 
@@ -9,6 +11,9 @@ type Props = {
   proof: Proof | null;
   verifying: boolean;
   exporting?: boolean;
+  apiBase?: string;
+  apiKey?: string;
+  canWrite?: boolean;
   onVerify: () => void;
   onExport?: () => void;
   onClose: () => void;
@@ -19,10 +24,14 @@ export function CallDetail({
   proof,
   verifying,
   exporting,
+  apiBase = "",
+  apiKey = "",
+  canWrite = false,
   onVerify,
   onExport,
   onClose,
 }: Props) {
+  const [shareOpen, setShareOpen] = useState(false);
   if (!call) return null;
   return (
     <div className="backdrop" onClick={onClose} role="presentation">
@@ -69,6 +78,17 @@ export function CallDetail({
               {exporting ? "导出中…" : "导出验证包"}
             </button>
           )}
+          {apiBase && apiKey && (
+            <button
+              type="button"
+              className="primary"
+              onClick={() => setShareOpen(true)}
+              disabled={!canWrite}
+              title={canWrite ? "生成给甲方看的公开页" : "只读角色不能生成链接"}
+            >
+              生成公开链接
+            </button>
+          )}
           {proof && (
             <span className={proof.ok ? "ok" : "bad"}>
               {proof.ok ? "✓ " : "✗ "}
@@ -76,6 +96,15 @@ export function CallDetail({
             </span>
           )}
         </footer>
+        <ShareLinkDialog
+          open={shareOpen}
+          kind="call"
+          targetId={call.id}
+          apiBase={apiBase}
+          apiKey={apiKey}
+          canWrite={canWrite}
+          onClose={() => setShareOpen(false)}
+        />
         <style jsx>{`
           .backdrop {
             position: fixed;

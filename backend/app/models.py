@@ -137,6 +137,43 @@ def _migrate(conn: sqlite3.Connection) -> None:
           ON research_artifacts(api_key, artifact_hash);
         CREATE INDEX IF NOT EXISTS idx_research_art_chain
           ON research_artifacts(chain_hash);
+
+        CREATE TABLE IF NOT EXISTS public_shares (
+          token TEXT PRIMARY KEY,
+          api_key TEXT NOT NULL,
+          target_type TEXT NOT NULL,
+          target_id TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          revoked INTEGER NOT NULL DEFAULT 0,
+          revoked_at TEXT,
+          view_count INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_public_shares_target
+          ON public_shares(target_type, target_id);
+        CREATE INDEX IF NOT EXISTS idx_public_shares_api_key
+          ON public_shares(api_key);
+
+        CREATE TABLE IF NOT EXISTS research_timeline (
+          id TEXT PRIMARY KEY,
+          api_key TEXT NOT NULL,
+          timestamp TEXT NOT NULL,
+          event_kind TEXT NOT NULL,
+          artifact_id TEXT,
+          call_id TEXT,
+          vendor TEXT,
+          model TEXT,
+          label TEXT,
+          prev_hash TEXT,
+          chain_hash TEXT,
+          attest_id TEXT,
+          deleted INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_research_timeline_api_key
+          ON research_timeline(api_key, timestamp DESC);
+        CREATE INDEX IF NOT EXISTS idx_research_timeline_artifact
+          ON research_timeline(artifact_id);
+        CREATE INDEX IF NOT EXISTS idx_research_timeline_call
+          ON research_timeline(call_id);
         """
     )
 
@@ -1355,6 +1392,274 @@ def list_prior_artifact_hashes(
             conn.close()
 
 
+def _parse_timeline(d: Dict[str, Any]) -> Dict[str, Any]:
+    d["deleted"] = bool(d.get("deleted"))
+    return d
+
+
+def insert_research_timeline(row: Dict[str, Any], *, db_path: Optional[Path] = None) -> None:
+    """写入科研时间线并追加 attestation_chain（event_type=research_timeline）。"""
+    with _lock:
+        conn = connect(db_path)
+        try:
+            conn.execute(
+                """
+                INSERT INTO research_timeline (
+                  id, api_key, timestamp, event_kind, artifact_id, call_id,
+                  vendor, model, label, prev_hash, chain_hash, attest_id, deleted
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    row["id"],
+                    row["api_key"],
+                    row["timestamp"],
+                    row.get("event_kind") or "api_call",
+                    row.get("artifact_id"),
+                    row.get("call_id"),
+                    row.get("vendor"),
+                    row.get("model"),
+                    row.get("label"),
+                    row["prev_hash"],
+                    row["chain_hash"],
+                    row["attest_id"],
+                    int(row.get("deleted") or 0),
+                ),
+            )
+            conn.execute(
+                """
+                INSERT INTO attestation_chain
+                  (id, api_key, call_id, hash, prev_hash, timestamp, event_type, ref_id)
+                VALUES (?,?,?,?,?,?, 'research_timeline', ?)
+                """,
+                (
+                    row["attest_id"],
+                    row["api_key"],
+                    row["id"],
+                    row["chain_hash"],
+                    row["prev_hash"],
+                    row["timestamp"],
+                    row["id"],
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    _note_tip(row["api_key"], row["chain_hash"])
+
+
+def get_research_timeline(
+    timeline_id: str, *, db_path: Optional[Path] = None
+) -> Optional[Dict[str, Any]]:
+    """含已软删除行（整链重算需要）。"""
+    with _lock:
+        conn = connect(db_path)
+        try:
+            row = conn.execute(
+                "SELECT * FROM research_timeline WHERE id=?", (timeline_id,)
+            ).fetchone()
+            return _parse_timeline(dict(row)) if row else None
+        finally:
+            conn.close()
+
+
+def list_research_timeline(
+    api_key: str,
+    *,
+    artifact_id: Optional[str] = None,
+    include_deleted: bool = False,
+    limit: int = 200,
+    db_path: Optional[Path] = None,
+) -> List[Dict[str, Any]]:
+    with _lock:
+        conn = connect(db_path)
+        try:
+            clauses = ["api_key=?"]
+            args: List[Any] = [api_key]
+            if not include_deleted:
+                clauses.append("deleted=0")
+            if artifact_id:
+                clauses.append("artifact_id=?")
+                args.append(artifact_id)
+            args.append(int(limit))
+            rows = conn.execute(
+                f"""
+                SELECT * FROM research_timeline
+                WHERE {' AND '.join(clauses)}
+                ORDER BY timestamp DESC LIMIT ?
+                """,
+                args,
+            ).fetchall()
+            return [_parse_timeline(dict(r)) for r in rows]
+        finally:
+            conn.close()
+
+
+def find_active_timeline_link(
+    api_key: str,
+    *,
+    artifact_id: str,
+    call_id: str,
+    db_path: Optional[Path] = None,
+) -> Optional[Dict[str, Any]]:
+    with _lock:
+        conn = connect(db_path)
+        try:
+            row = conn.execute(
+                """
+                SELECT * FROM research_timeline
+                WHERE api_key=? AND artifact_id=? AND call_id=? AND deleted=0
+                ORDER BY timestamp DESC LIMIT 1
+                """,
+                (api_key, artifact_id, call_id),
+            ).fetchone()
+            return _parse_timeline(dict(row)) if row else None
+        finally:
+            conn.close()
+
+
+def list_linked_calls(
+    api_key: str,
+    artifact_id: str,
+    *,
+    db_path: Optional[Path] = None,
+) -> List[Dict[str, Any]]:
+    """关联到某工件的调用摘要（不含 api_key / 原文）。"""
+    with _lock:
+        conn = connect(db_path)
+        try:
+            rows = conn.execute(
+                """
+                SELECT t.id AS timeline_id, t.timestamp AS linked_at, t.label,
+                       t.call_id, t.vendor, t.model, t.chain_hash AS timeline_chain_hash,
+                       c.timestamp AS call_timestamp, c.endpoint, c.model AS call_model,
+                       c.chain_hash AS call_chain_hash, c.prev_hash AS call_prev_hash,
+                       c.status_code, c.cost_usd
+                FROM research_timeline t
+                LEFT JOIN api_calls c ON c.id = t.call_id
+                WHERE t.api_key=? AND t.artifact_id=? AND t.deleted=0
+                ORDER BY t.timestamp DESC
+                """,
+                (api_key, artifact_id),
+            ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            conn.close()
+
+
+def soft_delete_research_timeline(
+    timeline_id: str, api_key: str, *, db_path: Optional[Path] = None
+) -> bool:
+    """软删除：链环仍在，列表不再展示。硬删会让整链校验失败。"""
+    with _lock:
+        conn = connect(db_path)
+        try:
+            cur = conn.execute(
+                """
+                UPDATE research_timeline SET deleted=1
+                WHERE id=? AND api_key=? AND deleted=0
+                """,
+                (timeline_id, api_key),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+        finally:
+            conn.close()
+
+
+def insert_public_share(row: Dict[str, Any], *, db_path: Optional[Path] = None) -> None:
+    with _lock:
+        conn = connect(db_path)
+        try:
+            conn.execute(
+                """
+                INSERT INTO public_shares (
+                  token, api_key, target_type, target_id, created_at,
+                  revoked, revoked_at, view_count
+                ) VALUES (?,?,?,?,?,?,?,?)
+                """,
+                (
+                    row["token"],
+                    row["api_key"],
+                    row["target_type"],
+                    row["target_id"],
+                    row["created_at"],
+                    int(row.get("revoked") or 0),
+                    row.get("revoked_at"),
+                    int(row.get("view_count") or 0),
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def get_public_share(token: str, *, db_path: Optional[Path] = None) -> Optional[Dict[str, Any]]:
+    with _lock:
+        conn = connect(db_path)
+        try:
+            row = conn.execute(
+                "SELECT * FROM public_shares WHERE token=?", (token,)
+            ).fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+
+def get_active_share(
+    api_key: str,
+    *,
+    target_type: str,
+    target_id: str,
+    db_path: Optional[Path] = None,
+) -> Optional[Dict[str, Any]]:
+    with _lock:
+        conn = connect(db_path)
+        try:
+            row = conn.execute(
+                """
+                SELECT * FROM public_shares
+                WHERE api_key=? AND target_type=? AND target_id=? AND revoked=0
+                ORDER BY created_at DESC LIMIT 1
+                """,
+                (api_key, target_type, target_id),
+            ).fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+
+def revoke_public_share(
+    token: str, api_key: str, *, revoked_at: str, db_path: Optional[Path] = None
+) -> bool:
+    with _lock:
+        conn = connect(db_path)
+        try:
+            cur = conn.execute(
+                """
+                UPDATE public_shares SET revoked=1, revoked_at=?
+                WHERE token=? AND api_key=? AND revoked=0
+                """,
+                (revoked_at, token, api_key),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+        finally:
+            conn.close()
+
+
+def bump_share_views(token: str, *, db_path: Optional[Path] = None) -> None:
+    with _lock:
+        conn = connect(db_path)
+        try:
+            conn.execute(
+                "UPDATE public_shares SET view_count = view_count + 1 WHERE token=?",
+                (token,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+
 def enrich_maps_for_chain(
     api_key: str,
     chain_rows: List[Dict[str, Any]],
@@ -1368,6 +1673,7 @@ def enrich_maps_for_chain(
     bas: Dict[str, Dict[str, Any]] = {}
     marks: Dict[str, Dict[str, Any]] = {}
     arts: Dict[str, Dict[str, Any]] = {}
+    timelines: Dict[str, Dict[str, Any]] = {}
     for row in chain_rows:
         et = str(row.get("event_type") or "call")
         ref = str(row.get("ref_id") or row.get("call_id") or "")
@@ -1403,6 +1709,12 @@ def enrich_maps_for_chain(
             a = get_research_artifact(ref, db_path=db_path)
             if a and a.get("api_key") == api_key:
                 arts[ref] = a
+        elif et == "research_timeline":
+            if ref in timelines:
+                continue
+            t = get_research_timeline(ref, db_path=db_path)
+            if t and t.get("api_key") == api_key:
+                timelines[ref] = t
         else:
             if ref in calls:
                 continue
@@ -1416,6 +1728,7 @@ def enrich_maps_for_chain(
         "baselines_by_id": bas,
         "drift_marks_by_id": marks,
         "artifacts_by_id": arts,
+        "timelines_by_id": timelines,
     }
 
 

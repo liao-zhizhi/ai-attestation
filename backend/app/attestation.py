@@ -198,6 +198,35 @@ def compute_research_artifact_chain_hash(
     return sha256_text(payload)
 
 
+def compute_research_timeline_chain_hash(
+    *,
+    prev_hash: str,
+    timeline_id: str,
+    timestamp: str,
+    artifact_id: str,
+    call_id: str,
+    vendor: str,
+    model: str,
+) -> str:
+    """时间线链环：prev|research_timeline|id|timestamp|artifact_id|call_id|vendor|model。
+
+    不改旧算法；空字段按空字符串绑定。
+    """
+    payload = "|".join(
+        [
+            prev_hash or GENESIS,
+            "research_timeline",
+            timeline_id,
+            timestamp,
+            artifact_id or "",
+            call_id or "",
+            vendor or "",
+            model or "",
+        ]
+    )
+    return sha256_text(payload)
+
+
 def _empty_verify() -> Dict[str, Any]:
     return {
         "ok": True,
@@ -212,6 +241,7 @@ def _empty_verify() -> Dict[str, Any]:
         "n_drift_marks": 0,
         "n_drift_reviews": 0,
         "n_research_artifacts": 0,
+        "n_research_timeline": 0,
     }
 
 
@@ -228,6 +258,7 @@ def verify_chain(links: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
         "n_drift_marks": 0,
         "n_drift_reviews": 0,
         "n_research_artifacts": 0,
+        "n_research_timeline": 0,
     }
 
     def fail(i: int, et: str, msg: str, ref: Any) -> Dict[str, Any]:
@@ -390,6 +421,32 @@ def verify_chain(links: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
                     "research_artifact",
                     f"research_artifact hash recompute failed at index {i}",
                     link.get("artifact_id"),
+                )
+        elif et == "research_timeline":
+            counts["n_research_timeline"] += 1
+            required = ("timeline_id", "timestamp")
+            if not all(k in link and link[k] is not None for k in required):
+                return fail(
+                    i,
+                    "research_timeline",
+                    f"research_timeline link missing required fields at index {i}",
+                    link.get("timeline_id") or link.get("id"),
+                )
+            recomputed = compute_research_timeline_chain_hash(
+                prev_hash=prev,
+                timeline_id=str(link.get("timeline_id") or link.get("id") or ""),
+                timestamp=str(link["timestamp"]),
+                artifact_id=str(link.get("artifact_id") or ""),
+                call_id=str(link.get("call_id") or ""),
+                vendor=str(link.get("vendor") or ""),
+                model=str(link.get("model") or ""),
+            )
+            if recomputed != cur:
+                return fail(
+                    i,
+                    "research_timeline",
+                    f"research_timeline hash recompute failed at index {i}",
+                    link.get("timeline_id"),
                 )
         else:
             counts["n_calls"] += 1
@@ -677,6 +734,29 @@ def verify_single_research_artifact(row: Mapping[str, Any]) -> Dict[str, Any]:
     }
 
 
+def verify_single_research_timeline(row: Mapping[str, Any]) -> Dict[str, Any]:
+    """单独重算时间线链环。"""
+    prev = str(row.get("prev_hash") or GENESIS)
+    expected = compute_research_timeline_chain_hash(
+        prev_hash=prev,
+        timeline_id=str(row.get("id") or ""),
+        timestamp=str(row.get("timestamp") or ""),
+        artifact_id=str(row.get("artifact_id") or ""),
+        call_id=str(row.get("call_id") or ""),
+        vendor=str(row.get("vendor") or ""),
+        model=str(row.get("model") or ""),
+    )
+    actual = str(row.get("chain_hash") or "")
+    ok = expected == actual
+    return {
+        "ok": ok,
+        "expected_hash": expected,
+        "actual_hash": actual,
+        "prev_hash": prev,
+        "message": "research_timeline link intact" if ok else "research_timeline link hash mismatch",
+    }
+
+
 def verify_unified_records(
     calls: Sequence[Mapping[str, Any]],
     queries: Sequence[Mapping[str, Any]],
@@ -794,12 +874,14 @@ def verify_chain_rows(
     baselines_by_id: Mapping[str, Mapping[str, Any]] | None = None,
     drift_marks_by_id: Mapping[str, Mapping[str, Any]] | None = None,
     artifacts_by_id: Mapping[str, Mapping[str, Any]] | None = None,
+    timelines_by_id: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> Dict[str, Any]:
     """Verify using attestation_chain insertion order + enriched rows."""
     compliance_by_id = compliance_by_id or {}
     baselines_by_id = baselines_by_id or {}
     drift_marks_by_id = drift_marks_by_id or {}
     artifacts_by_id = artifacts_by_id or {}
+    timelines_by_id = timelines_by_id or {}
     links: List[Dict[str, Any]] = []
     for row in chain_rows:
         et = str(row.get("event_type") or "call")
@@ -894,6 +976,21 @@ def verify_chain_rows(
                     "prev_hash": a.get("prev_hash") or row.get("prev_hash"),
                 }
             )
+        elif et == "research_timeline":
+            t = (timelines_by_id or {}).get(ref) or {}
+            base.update(
+                {
+                    "timeline_id": t.get("id") or ref,
+                    "id": t.get("id") or ref,
+                    "artifact_id": t.get("artifact_id") or "",
+                    "call_id": t.get("call_id") or "",
+                    "vendor": t.get("vendor") or "",
+                    "model": t.get("model") or "",
+                    "timestamp": t.get("timestamp") or row.get("timestamp"),
+                    "hash": t.get("chain_hash") or row.get("hash"),
+                    "prev_hash": t.get("prev_hash") or row.get("prev_hash"),
+                }
+            )
         else:
             c = calls_by_id.get(ref) or {}
             base.update(
@@ -927,4 +1024,5 @@ def verify_key_chain(api_key: str, *, db_path=None) -> Dict[str, Any]:
         baselines_by_id=maps["baselines_by_id"],
         drift_marks_by_id=maps["drift_marks_by_id"],
         artifacts_by_id=maps.get("artifacts_by_id") or {},
+        timelines_by_id=maps.get("timelines_by_id") or {},
     )

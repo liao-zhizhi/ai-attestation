@@ -654,6 +654,9 @@ export default function HomePage() {
           proof={proof}
           verifying={verifying}
           exporting={exportingPack}
+          apiBase={apiBase}
+          apiKey={apiKey}
+          canWrite={canWrite}
           onVerify={verifyDetail}
           onExport={exportVerifyPack}
           onClose={() => {

@@ -5,6 +5,8 @@ import { parseApiError, withApiKey } from "@/lib/api";
 import { ArtifactList, type ArtifactRow } from "./ArtifactList";
 import { ArtifactRegister } from "./ArtifactRegister";
 import { PriorityCertificate } from "./PriorityCertificate";
+import { LinkedCallsPanel } from "./LinkedCallsPanel";
+import { ShareLinkDialog } from "./ShareLinkDialog";
 
 type Props = {
   apiBase: string;
@@ -38,6 +40,7 @@ export function ResearchTab({ apiBase, apiKey, canWrite, onChainUpdated }: Props
   const [detail, setDetail] = useState<Detail | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [exportingId, setExportingId] = useState<string | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
 
   const loadList = useCallback(async () => {
     if (!apiKey || apiKey.length < 8) return;
@@ -135,7 +138,27 @@ export function ResearchTab({ apiBase, apiKey, canWrite, onChainUpdated }: Props
         duplicateNotice={detail?.duplicate_notice || null}
         onExport={() => selectedId && exportCert(selectedId)}
         exporting={!!selectedId && exportingId === selectedId}
+        onShare={() => setShareOpen(true)}
+        canShare={canWrite && !!selectedId}
       />
+      <LinkedCallsPanel
+        apiBase={apiBase}
+        apiKey={apiKey}
+        artifactId={selectedId}
+        canWrite={canWrite}
+        onChanged={() => onChainUpdated?.()}
+      />
+      {selectedId && (
+        <ShareLinkDialog
+          open={shareOpen}
+          kind="artifact"
+          targetId={selectedId}
+          apiBase={apiBase}
+          apiKey={apiKey}
+          canWrite={canWrite}
+          onClose={() => setShareOpen(false)}
+        />
+      )}
       <style jsx>{`
         .lead {
           margin: 0 0 6px;

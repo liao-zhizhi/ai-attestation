@@ -17,6 +17,8 @@ type Props = {
   duplicateNotice?: string | null;
   onExport: () => void;
   exporting: boolean;
+  onShare?: () => void;
+  canShare?: boolean;
 };
 
 /** 详情区：完整哈希、TSA 时间、导出优先权证书。 */
@@ -26,6 +28,8 @@ export function PriorityCertificate({
   duplicateNotice,
   onExport,
   exporting,
+  onShare,
+  canShare,
 }: Props) {
   if (!artifact) {
     return (
@@ -66,6 +70,11 @@ export function PriorityCertificate({
       <button type="button" className="accent" onClick={onExport} disabled={exporting}>
         {exporting ? "导出中…" : "导出优先权证书"}
       </button>
+      {onShare && (
+        <button type="button" className="share" onClick={onShare} disabled={!canShare}>
+          生成公开链接
+        </button>
+      )}
       <style jsx>{`
         .cert {
           margin-top: 16px;
@@ -125,6 +134,13 @@ export function PriorityCertificate({
           background: #1a3d2c;
           border-color: #2a5c42;
           color: #3dd68c;
+          margin-right: 8px;
+        }
+        button.share {
+          margin-top: 0;
+        }
+        button:disabled {
+          opacity: 0.5;
         }
       `}</style>
     </section>

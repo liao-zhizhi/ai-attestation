@@ -73,6 +73,19 @@ from query_audit import execute_attested_query
 from key_auth import mask_key, require_key, resolve_api_key
 from research import get_artifact_detail, list_artifacts_for_key, register_artifact
 from research_cert import build_priority_certificate_zip, certificate_filename
+from public_shares import (
+    create_or_get_share,
+    lookup_share,
+    public_verify_artifact,
+    public_verify_call,
+    revoke_share,
+)
+from research_timeline import (
+    link_call_to_artifact,
+    linked_calls_for_artifact,
+    list_timeline,
+    unlink_timeline,
+)
 from report_mail import send_subscription_async, start_report_scheduler
 from export_calls import iter_export_rows, rows_to_csv, rows_to_json
 from compliance import (
@@ -638,6 +651,7 @@ def dashboard_attestation(api_key: str = Query(..., min_length=8)) -> Dict[str, 
         "n_baselines": proof.get("n_baselines", 0),
         "n_drift_marks": proof.get("n_drift_marks", 0),
         "n_research_artifacts": proof.get("n_research_artifacts", 0),
+        "n_research_timeline": proof.get("n_research_timeline", 0),
         "blockchain_anchor": latest_anchor(api_key, db_path=DB_PATH),
     }
 
@@ -1519,4 +1533,130 @@ def research_artifacts_certificate(
         content=zbytes,
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )
+
+
+class TimelineLinkBody(BaseModel):
+    """把一次 API 调用关联到科研工件。"""
+
+    api_key: str = Field(..., min_length=8)
+    call_id: str = Field(..., min_length=4, max_length=80)
+    artifact_id: str = Field(..., min_length=4, max_length=80)
+    label: Optional[str] = Field(default=None, max_length=200)
+
+
+@app.post("/v1/public/share/call/{call_id}")
+def public_share_call(
+    call_id: str,
+    request: Request,
+    api_key: str = Depends(resolve_api_key),
+) -> Dict[str, Any]:
+    """生成（或返回已有）调用公开链接。需要 read_write。"""
+    return create_or_get_share(
+        api_key=api_key,
+        target_type="call",
+        target_id=call_id,
+        request=request,
+        db_path=DB_PATH,
+    )
+
+
+@app.get("/v1/public/share/call/{call_id}")
+def public_share_call_lookup(
+    call_id: str,
+    request: Request,
+    api_key: str = Depends(resolve_api_key),
+) -> Dict[str, Any]:
+    return lookup_share(
+        api_key=api_key,
+        target_type="call",
+        target_id=call_id,
+        request=request,
+        db_path=DB_PATH,
+    )
+
+
+@app.post("/v1/public/share/artifact/{artifact_id}")
+def public_share_artifact(
+    artifact_id: str,
+    request: Request,
+    api_key: str = Depends(resolve_api_key),
+) -> Dict[str, Any]:
+    return create_or_get_share(
+        api_key=api_key,
+        target_type="artifact",
+        target_id=artifact_id,
+        request=request,
+        db_path=DB_PATH,
+    )
+
+
+@app.get("/v1/public/share/artifact/{artifact_id}")
+def public_share_artifact_lookup(
+    artifact_id: str,
+    request: Request,
+    api_key: str = Depends(resolve_api_key),
+) -> Dict[str, Any]:
+    return lookup_share(
+        api_key=api_key,
+        target_type="artifact",
+        target_id=artifact_id,
+        request=request,
+        db_path=DB_PATH,
+    )
+
+
+@app.delete("/v1/public/share/{token}")
+def public_share_revoke(
+    token: str, api_key: str = Depends(resolve_api_key)
+) -> Dict[str, Any]:
+    return revoke_share(api_key=api_key, token=token, db_path=DB_PATH)
+
+
+@app.get("/v1/public/verify/call/{token}")
+def public_verify_call_route(token: str) -> Dict[str, Any]:
+    """无需登录。不返回 api_key / 原文。"""
+    return public_verify_call(token, db_path=DB_PATH)
+
+
+@app.get("/v1/public/verify/artifact/{token}")
+def public_verify_artifact_route(token: str) -> Dict[str, Any]:
+    return public_verify_artifact(token, db_path=DB_PATH)
+
+
+@app.post("/v1/research/timeline/link-call")
+def research_timeline_link(body: TimelineLinkBody) -> Dict[str, Any]:
+    return link_call_to_artifact(
+        api_key=body.api_key,
+        call_id=body.call_id,
+        artifact_id=body.artifact_id,
+        label=body.label,
+        db_path=DB_PATH,
+    )
+
+
+@app.get("/v1/research/timeline")
+def research_timeline_list(
+    api_key: str = Query(..., min_length=8),
+    artifact_id: Optional[str] = Query(default=None),
+    limit: int = Query(200, ge=1, le=500),
+) -> Dict[str, Any]:
+    return list_timeline(
+        api_key=api_key, artifact_id=artifact_id, limit=limit, db_path=DB_PATH
+    )
+
+
+@app.delete("/v1/research/timeline/{timeline_id}")
+def research_timeline_delete(
+    timeline_id: str, api_key: str = Depends(resolve_api_key)
+) -> Dict[str, Any]:
+    return unlink_timeline(api_key=api_key, timeline_id=timeline_id, db_path=DB_PATH)
+
+
+@app.get("/v1/research/artifacts/{artifact_id}/linked-calls")
+def research_artifact_linked_calls(
+    artifact_id: str, api_key: str = Query(..., min_length=8)
+) -> Dict[str, Any]:
+    return linked_calls_for_artifact(
+        api_key=api_key, artifact_id=artifact_id, db_path=DB_PATH
     )
