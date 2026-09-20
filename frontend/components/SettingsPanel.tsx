@@ -49,6 +49,8 @@ export function SettingsPanel({
   });
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [subMsg, setSubMsg] = useState<string | null>(null);
+  const [smtpConfigured, setSmtpConfigured] = useState<boolean | null>(null);
+  const [testBusy, setTestBusy] = useState(false);
 
   const loadSub = useCallback(async () => {
     if (!apiKey) return;
@@ -57,6 +59,9 @@ export function SettingsPanel({
     );
     if (!r.ok) return;
     const d = await r.json();
+    if (typeof d.smtp_configured === "boolean") {
+      setSmtpConfigured(d.smtp_configured);
+    }
     if (d.subscription) {
       setEmail(d.subscription.email || "");
       setFrequency(d.subscription.frequency || "weekly");
@@ -111,21 +116,37 @@ export function SettingsPanel({
 
   async function testSub() {
     setSubMsg(null);
-    const r = await fetch(
-      `${apiBase}/v1/dashboard/settings/report-subscription/test`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ api_key: apiKey }),
+    setTestBusy(true);
+    try {
+      const r = await fetch(
+        `${apiBase}/v1/dashboard/settings/report-subscription/test`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ api_key: apiKey }),
+        }
+      );
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        if (r.status === 403) {
+          setSubMsg("发送失败（权限不足）");
+          return;
+        }
+        if (r.status === 422) {
+          setSubMsg("发送失败（请求格式错误）");
+          return;
+        }
+        setSubMsg(formatDetail(d.detail, "发送失败，请先保存订阅"));
+        return;
       }
-    );
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok) {
-      setSubMsg(formatDetail(d.detail, "发送失败，请先保存订阅"));
-      return;
+      if (typeof d.smtp_configured === "boolean") {
+        setSmtpConfigured(d.smtp_configured);
+      }
+      setSubMsg(d.message || (d.ok === false ? "发送失败" : "已发送"));
+      await loadSub();
+    } finally {
+      setTestBusy(false);
     }
-    setSubMsg(d.message || "已排队");
-    setTimeout(loadSub, 800);
   }
 
   const tabs: { id: SubTab; label: string }[] = [
@@ -230,10 +251,16 @@ export function SettingsPanel({
             <button type="button" onClick={saveSub}>
               保存订阅
             </button>
-            <button type="button" onClick={testSub}>
-              立即发送测试报告
+            <button type="button" onClick={testSub} disabled={testBusy}>
+              {testBusy ? "发送中…" : "立即发送测试报告"}
             </button>
           </div>
+          {smtpConfigured === false && (
+            <p className="hint">
+              服务器尚未配置 SMTP（<code>ATA_SMTP_HOST</code> + <code>ATA_SMTP_FROM</code>
+              ）。现在点「立即发送」只会在服务器生成 HTML 文件，邮箱收不到信。
+            </p>
+          )}
           {subMsg && <p className="msg">{subMsg}</p>}
           <h3>最近发送历史</h3>
           {history.length === 0 ? (
@@ -247,7 +274,10 @@ export function SettingsPanel({
                     {h.status}
                   </span>
                   {h.error_message && (
-                    <span className="err mono" title={h.error_message}>
+                    <span
+                      className={h.status === "success" ? "hint-inline" : "err mono"}
+                      title={h.error_message}
+                    >
                       {h.error_message.slice(0, 48)}
                     </span>
                   )}
@@ -386,6 +416,10 @@ export function SettingsPanel({
         }
         .err {
           color: #f0b429;
+        }
+        .hint-inline {
+          color: #7f8fa3;
+          font-size: 11px;
         }
         .msg {
           font-size: 12px;

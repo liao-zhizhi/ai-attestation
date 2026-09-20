@@ -226,3 +226,90 @@ def test_put_report_subscription_422_403_and_ok(monkeypatch):
         assert sub["content_options"]["api_overview"] is True
     finally:
         td.cleanup()
+
+
+def test_test_report_without_smtp_explains_file_fallback(monkeypatch):
+    """未配置 SMTP 时测试发送应成功写文件，并明确告诉前端不会发到邮箱。"""
+    from fastapi.testclient import TestClient
+
+    monkeypatch.delenv("ATA_SMTP_HOST", raising=False)
+    monkeypatch.delenv("ATA_SMTP_FROM", raising=False)
+    td, db = _db()
+    try:
+        rw = "ata_test_rsub_smtp_0001"
+        ensure_api_key(rw, label="rw", role="read_write", db_path=db)
+
+        import main as main_mod
+
+        monkeypatch.setattr(main_mod, "DB_PATH", db)
+        client = TestClient(main_mod.app)
+        put = client.put(
+            "/v1/dashboard/settings/report-subscription",
+            json={
+                "api_key": rw,
+                "email": "ops@example.com",
+                "frequency": "weekly",
+                "content_options": {"api_overview": True},
+            },
+        )
+        assert put.status_code == 200, put.text
+
+        got = client.get(
+            "/v1/dashboard/settings/report-subscription",
+            params={"api_key": rw},
+        )
+        assert got.status_code == 200
+        assert got.json()["smtp_configured"] is False
+
+        test = client.post(
+            "/v1/dashboard/settings/report-subscription/test",
+            json={"api_key": rw},
+        )
+        assert test.status_code == 200, test.text
+        body = test.json()
+        assert body["ok"] is True
+        assert body["smtp_configured"] is False
+        assert "SMTP" in body["message"]
+        assert "邮箱" in body["message"]
+    finally:
+        td.cleanup()
+
+
+def test_deliver_html_port_465_uses_ssl(monkeypatch):
+    """QQ 等常用 465 端口必须走 SMTPS，而不是 STARTTLS。"""
+    monkeypatch.setenv("ATA_SMTP_HOST", "smtp.example.com")
+    monkeypatch.setenv("ATA_SMTP_FROM", "a@example.com")
+    monkeypatch.setenv("ATA_SMTP_PORT", "465")
+    monkeypatch.setenv("ATA_SMTP_USER", "a@example.com")
+    monkeypatch.setenv("ATA_SMTP_PASSWORD", "secret")
+    seen: dict = {}
+
+    class FakeSSL:
+        def __init__(self, host, port, timeout=None, context=None):
+            seen["host"] = host
+            seen["port"] = port
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def login(self, user, password):
+            seen["login"] = (user, password)
+
+        def sendmail(self, *args):
+            seen["send"] = True
+
+    def boom(*args, **kwargs):
+        raise AssertionError("port 465 must not use smtplib.SMTP")
+
+    monkeypatch.setattr("smtplib.SMTP_SSL", FakeSSL)
+    monkeypatch.setattr("smtplib.SMTP", boom)
+    status, err = deliver_html(
+        to_emails=["b@example.com"], subject="t", html_body="<p>x</p>"
+    )
+    assert status == "success", err
+    assert seen.get("port") == 465
+    assert seen.get("send") is True
+    assert seen.get("login") == ("a@example.com", "secret")

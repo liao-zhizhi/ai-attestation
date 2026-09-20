@@ -86,7 +86,18 @@ from research_timeline import (
     list_timeline,
     unlink_timeline,
 )
-from report_mail import parse_emails, send_subscription_async, start_report_scheduler
+from research_consent import (
+    consent_report,
+    current_consent,
+    export_consent_report,
+    put_consent,
+)
+from report_mail import (
+    parse_emails,
+    send_subscription_report,
+    smtp_configured,
+    start_report_scheduler,
+)
 from export_calls import iter_export_rows, rows_to_csv, rows_to_json
 from compliance import (
     check_evidence_detail,
@@ -281,7 +292,11 @@ def get_report_sub(api_key: str = Query(..., min_length=8)) -> Dict[str, Any]:
     require_key(api_key, min_role="read_only", db_path=DB_PATH)
     sub = get_report_subscription_for_key(api_key, db_path=DB_PATH)
     hist = list_report_history_for_key(api_key, limit=10, db_path=DB_PATH)
-    return {"subscription": sub, "history": hist}
+    return {
+        "subscription": sub,
+        "history": hist,
+        "smtp_configured": smtp_configured(),
+    }
 
 
 @app.put("/v1/dashboard/settings/report-subscription")
@@ -322,9 +337,33 @@ def test_report_sub(body: ReportTestBody) -> Dict[str, Any]:
     require_key(body.api_key, min_role="read_write", db_path=DB_PATH)
     sub = get_report_subscription_for_key(body.api_key, db_path=DB_PATH)
     if not sub:
-        raise HTTPException(400, "save subscription first")
-    send_subscription_async(subscription_id=sub["id"], db_path=DB_PATH, test=True)
-    return {"ok": True, "queued": True, "message": "测试报告已排队发送（无 SMTP 时写入 reports/）"}
+        raise HTTPException(400, "请先保存订阅")
+    # 同步发送，把真实结果返回给设置页（定时任务仍走后台线程）
+    out = send_subscription_report(
+        subscription_id=sub["id"], db_path=DB_PATH, test=True
+    )
+    smtp_on = smtp_configured()
+    if not out.get("ok"):
+        err = out.get("error") or "未知错误"
+        return {
+            "ok": False,
+            "queued": False,
+            "smtp_configured": smtp_on,
+            "message": f"发送失败：{err}",
+        }
+    if out.get("log_path") or not smtp_on:
+        return {
+            "ok": True,
+            "queued": False,
+            "smtp_configured": False,
+            "message": "未配置 SMTP，测试报告已写到服务器文件，邮箱不会收到邮件。请配置 ATA_SMTP_* 后重试。",
+        }
+    return {
+        "ok": True,
+        "queued": False,
+        "smtp_configured": True,
+        "message": "测试邮件已发送，请查收收件箱（含垃圾箱）",
+    }
 
 
 # ── Settings: API key management ─────────────────────────────────────────────
@@ -671,6 +710,7 @@ def dashboard_attestation(api_key: str = Query(..., min_length=8)) -> Dict[str, 
         "n_drift_marks": proof.get("n_drift_marks", 0),
         "n_research_artifacts": proof.get("n_research_artifacts", 0),
         "n_research_timeline": proof.get("n_research_timeline", 0),
+        "n_research_consent": proof.get("n_research_consent", 0),
         "blockchain_anchor": latest_anchor(api_key, db_path=DB_PATH),
     }
 
@@ -1564,6 +1604,18 @@ class TimelineLinkBody(BaseModel):
     label: Optional[str] = Field(default=None, max_length=200)
 
 
+class ConsentBody(BaseModel):
+    """训练同意变更。vendor='*' 表示全局默认。"""
+
+    api_key: str = Field(..., min_length=8)
+    vendor: str = Field(default="*", min_length=1, max_length=64)
+    allow_training: str = Field(..., pattern="^(unknown|yes|no)$")
+    policy_url: Optional[str] = Field(default=None, max_length=500)
+    policy_hash: Optional[str] = Field(default=None, max_length=64)
+    note: Optional[str] = Field(default=None, max_length=500)
+    source: Optional[str] = Field(default="user_dashboard", max_length=40)
+
+
 @app.post("/v1/public/share/call/{call_id}")
 def public_share_call(
     call_id: str,
@@ -1678,4 +1730,47 @@ def research_artifact_linked_calls(
 ) -> Dict[str, Any]:
     return linked_calls_for_artifact(
         api_key=api_key, artifact_id=artifact_id, db_path=DB_PATH
+    )
+
+
+@app.get("/v1/research/consent")
+def research_consent_get(api_key: str = Query(..., min_length=8)) -> Dict[str, Any]:
+    """当前有效训练同意（read_only）。"""
+    return current_consent(api_key=api_key, db_path=DB_PATH)
+
+
+@app.put("/v1/research/consent")
+def research_consent_put(body: ConsentBody) -> Dict[str, Any]:
+    """写入一条同意变更并上链（read_write）。"""
+    return put_consent(
+        api_key=body.api_key,
+        vendor=body.vendor,
+        allow_training=body.allow_training,
+        policy_url=body.policy_url,
+        policy_hash=body.policy_hash,
+        note=body.note,
+        source=body.source or "user_dashboard",
+        db_path=DB_PATH,
+    )
+
+
+@app.get("/v1/research/consent/report")
+def research_consent_report(api_key: str = Query(..., min_length=8)) -> Dict[str, Any]:
+    """当前有效同意 + 历史变更（read_only）。"""
+    return consent_report(api_key=api_key, db_path=DB_PATH)
+
+
+@app.get("/v1/research/consent/report/export")
+def research_consent_report_export(
+    api_key: str = Query(..., min_length=8),
+    format: str = Query("txt", pattern="^(txt|json)$"),
+) -> Response:
+    """导出训练同意审计摘要。"""
+    body, media, filename = export_consent_report(
+        api_key=api_key, fmt=format, db_path=DB_PATH
+    )
+    return Response(
+        content=body,
+        media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

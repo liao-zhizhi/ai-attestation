@@ -7,6 +7,7 @@ import { ArtifactRegister } from "./ArtifactRegister";
 import { PriorityCertificate } from "./PriorityCertificate";
 import { LinkedCallsPanel } from "./LinkedCallsPanel";
 import { ShareLinkDialog } from "./ShareLinkDialog";
+import { ConsentPanel } from "./ConsentPanel";
 
 type Props = {
   apiBase: string;
@@ -115,6 +116,12 @@ export function ResearchTab({ apiBase, apiKey, canWrite, onChainUpdated }: Props
         已在「设置」里点过「保存」。
       </p>
       {err && <p className="bad">{err}</p>}
+      <ConsentPanel
+        apiBase={apiBase}
+        apiKey={apiKey}
+        canWrite={canWrite}
+        onChainUpdated={onChainUpdated}
+      />
       <ArtifactRegister
         apiBase={apiBase}
         apiKey={apiKey}

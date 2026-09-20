@@ -321,8 +321,24 @@ def render_report_html(payload: Mapping[str, Any]) -> str:
 </body></html>"""
 
 
-def _smtp_configured() -> bool:
+def smtp_configured() -> bool:
+    """SMTP 为可选功能：未同时设置 HOST 与 FROM 时不发信，只写本地文件。"""
     return bool(os.environ.get("ATA_SMTP_HOST") and os.environ.get("ATA_SMTP_FROM"))
+
+
+def _env_flag(name: str) -> Optional[bool]:
+    raw = os.environ.get(name)
+    if raw is None or str(raw).strip() == "":
+        return None
+    return str(raw).strip().lower() not in ("0", "false", "no", "off")
+
+
+def _use_smtp_ssl(port: int) -> bool:
+    """465 默认 SMTPS；可用 ATA_SMTP_SSL=1/0 覆盖。"""
+    explicit = _env_flag("ATA_SMTP_SSL")
+    if explicit is not None:
+        return explicit
+    return int(port) == 465
 
 
 def deliver_html(
@@ -332,33 +348,50 @@ def deliver_html(
     html_body: str,
 ) -> Tuple[str, Optional[str]]:
     """Send via SMTP or write to reports/. Returns (status, error_or_path)."""
-    if _smtp_configured():
+    if smtp_configured():
         host = os.environ["ATA_SMTP_HOST"]
         port = int(os.environ.get("ATA_SMTP_PORT", "587"))
         user = os.environ.get("ATA_SMTP_USER", "")
         password = os.environ.get("ATA_SMTP_PASSWORD", "")
         from_addr = os.environ["ATA_SMTP_FROM"]
-        use_tls = os.environ.get("ATA_SMTP_TLS", "1") not in ("0", "false", "False")
+        use_tls = _env_flag("ATA_SMTP_TLS")
+        if use_tls is None:
+            use_tls = True
+        use_ssl = _use_smtp_ssl(port)
         try:
             msg = MIMEMultipart("alternative")
             msg["Subject"] = subject
             msg["From"] = from_addr
             msg["To"] = ", ".join(to_emails)
             msg.attach(MIMEText(html_body, "html", "utf-8"))
-            with smtplib.SMTP(host, port, timeout=30) as smtp:
-                if use_tls:
-                    smtp.starttls()
-                if user:
-                    smtp.login(user, password)
-                smtp.sendmail(from_addr, to_emails, msg.as_string())
+            if use_ssl:
+                with smtplib.SMTP_SSL(host, port, timeout=30) as smtp:
+                    if user:
+                        smtp.login(user, password)
+                    smtp.sendmail(from_addr, to_emails, msg.as_string())
+            else:
+                with smtplib.SMTP(host, port, timeout=30) as smtp:
+                    if use_tls:
+                        smtp.starttls()
+                    if user:
+                        smtp.login(user, password)
+                    smtp.sendmail(from_addr, to_emails, msg.as_string())
             return "success", None
         except Exception as e:
+            log.warning("SMTP send failed: %s", e)
             return "failed", str(e)
 
-    path = _reports_dir() / f"email_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}.html"
-    path.write_text(html_body, encoding="utf-8")
-    log.info("SMTP not configured; wrote report to %s", path)
-    return "success", str(path)
+    try:
+        path = _reports_dir() / (
+            f"email_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_"
+            f"{uuid.uuid4().hex[:8]}.html"
+        )
+        path.write_text(html_body, encoding="utf-8")
+        log.info("SMTP not configured; wrote report to %s", path)
+        return "success", str(path)
+    except Exception as e:
+        log.warning("report file fallback failed: %s", e)
+        return "failed", str(e)
 
 
 def parse_emails(raw: str) -> List[str]:
@@ -398,8 +431,14 @@ def send_subscription_report(
             "subscription_id": subscription_id,
             "sent_at": sent_at,
             "status": status,
-            "error_message": err if status == "failed" else (
-                f"written:{err}" if err and status == "success" else None
+            "error_message": (
+                err
+                if status == "failed"
+                else (
+                    "未配置 SMTP，已写入服务器文件（邮箱未发送）"
+                    if err and status == "success"
+                    else None
+                )
             ),
         },
         db_path=db_path,

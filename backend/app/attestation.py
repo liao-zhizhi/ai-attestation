@@ -227,6 +227,33 @@ def compute_research_timeline_chain_hash(
     return sha256_text(payload)
 
 
+def compute_research_consent_chain_hash(
+    *,
+    prev_hash: str,
+    consent_id: str,
+    timestamp: str,
+    vendor: str,
+    allow_training: str,
+    policy_hash: str,
+) -> str:
+    """同意记录链环：prev|research_consent|id|timestamp|vendor|allow_training|policy_hash。
+
+    不改旧算法；policy_hash 缺省按空字符串绑定。
+    """
+    payload = "|".join(
+        [
+            prev_hash or GENESIS,
+            "research_consent",
+            consent_id,
+            timestamp,
+            vendor or "",
+            allow_training or "",
+            policy_hash or "",
+        ]
+    )
+    return sha256_text(payload)
+
+
 def _empty_verify() -> Dict[str, Any]:
     return {
         "ok": True,
@@ -242,6 +269,7 @@ def _empty_verify() -> Dict[str, Any]:
         "n_drift_reviews": 0,
         "n_research_artifacts": 0,
         "n_research_timeline": 0,
+        "n_research_consent": 0,
     }
 
 
@@ -259,6 +287,7 @@ def verify_chain(links: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
         "n_drift_reviews": 0,
         "n_research_artifacts": 0,
         "n_research_timeline": 0,
+        "n_research_consent": 0,
     }
 
     def fail(i: int, et: str, msg: str, ref: Any) -> Dict[str, Any]:
@@ -447,6 +476,31 @@ def verify_chain(links: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
                     "research_timeline",
                     f"research_timeline hash recompute failed at index {i}",
                     link.get("timeline_id"),
+                )
+        elif et == "research_consent":
+            counts["n_research_consent"] += 1
+            required = ("consent_id", "timestamp", "vendor", "allow_training")
+            if not all(k in link and link[k] is not None for k in required):
+                return fail(
+                    i,
+                    "research_consent",
+                    f"research_consent link missing required fields at index {i}",
+                    link.get("consent_id") or link.get("id"),
+                )
+            recomputed = compute_research_consent_chain_hash(
+                prev_hash=prev,
+                consent_id=str(link.get("consent_id") or link.get("id") or ""),
+                timestamp=str(link["timestamp"]),
+                vendor=str(link.get("vendor") or ""),
+                allow_training=str(link.get("allow_training") or ""),
+                policy_hash=str(link.get("policy_hash") or ""),
+            )
+            if recomputed != cur:
+                return fail(
+                    i,
+                    "research_consent",
+                    f"research_consent hash recompute failed at index {i}",
+                    link.get("consent_id"),
                 )
         else:
             counts["n_calls"] += 1
@@ -757,6 +811,28 @@ def verify_single_research_timeline(row: Mapping[str, Any]) -> Dict[str, Any]:
     }
 
 
+def verify_single_research_consent(row: Mapping[str, Any]) -> Dict[str, Any]:
+    """单独重算训练同意链环。"""
+    prev = str(row.get("prev_hash") or GENESIS)
+    expected = compute_research_consent_chain_hash(
+        prev_hash=prev,
+        consent_id=str(row.get("id") or ""),
+        timestamp=str(row.get("timestamp") or ""),
+        vendor=str(row.get("vendor") or ""),
+        allow_training=str(row.get("allow_training") or ""),
+        policy_hash=str(row.get("policy_hash") or ""),
+    )
+    actual = str(row.get("chain_hash") or "")
+    ok = expected == actual
+    return {
+        "ok": ok,
+        "expected_hash": expected,
+        "actual_hash": actual,
+        "prev_hash": prev,
+        "message": "research_consent link intact" if ok else "research_consent link hash mismatch",
+    }
+
+
 def verify_unified_records(
     calls: Sequence[Mapping[str, Any]],
     queries: Sequence[Mapping[str, Any]],
@@ -875,6 +951,7 @@ def verify_chain_rows(
     drift_marks_by_id: Mapping[str, Mapping[str, Any]] | None = None,
     artifacts_by_id: Mapping[str, Mapping[str, Any]] | None = None,
     timelines_by_id: Mapping[str, Mapping[str, Any]] | None = None,
+    consents_by_id: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> Dict[str, Any]:
     """Verify using attestation_chain insertion order + enriched rows."""
     compliance_by_id = compliance_by_id or {}
@@ -882,6 +959,7 @@ def verify_chain_rows(
     drift_marks_by_id = drift_marks_by_id or {}
     artifacts_by_id = artifacts_by_id or {}
     timelines_by_id = timelines_by_id or {}
+    consents_by_id = consents_by_id or {}
     links: List[Dict[str, Any]] = []
     for row in chain_rows:
         et = str(row.get("event_type") or "call")
@@ -991,6 +1069,20 @@ def verify_chain_rows(
                     "prev_hash": t.get("prev_hash") or row.get("prev_hash"),
                 }
             )
+        elif et == "research_consent":
+            cn = (consents_by_id or {}).get(ref) or {}
+            base.update(
+                {
+                    "consent_id": cn.get("id") or ref,
+                    "id": cn.get("id") or ref,
+                    "vendor": cn.get("vendor") or "",
+                    "allow_training": cn.get("allow_training") or "",
+                    "policy_hash": cn.get("policy_hash") or "",
+                    "timestamp": cn.get("timestamp") or row.get("timestamp"),
+                    "hash": cn.get("chain_hash") or row.get("hash"),
+                    "prev_hash": cn.get("prev_hash") or row.get("prev_hash"),
+                }
+            )
         else:
             c = calls_by_id.get(ref) or {}
             base.update(
@@ -1025,4 +1117,5 @@ def verify_key_chain(api_key: str, *, db_path=None) -> Dict[str, Any]:
         drift_marks_by_id=maps["drift_marks_by_id"],
         artifacts_by_id=maps.get("artifacts_by_id") or {},
         timelines_by_id=maps.get("timelines_by_id") or {},
+        consents_by_id=maps.get("consents_by_id") or {},
     )

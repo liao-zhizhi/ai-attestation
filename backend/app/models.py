@@ -174,6 +174,25 @@ def _migrate(conn: sqlite3.Connection) -> None:
           ON research_timeline(artifact_id);
         CREATE INDEX IF NOT EXISTS idx_research_timeline_call
           ON research_timeline(call_id);
+
+        CREATE TABLE IF NOT EXISTS consent_records (
+          id TEXT PRIMARY KEY,
+          api_key TEXT NOT NULL,
+          timestamp TEXT NOT NULL,
+          vendor TEXT NOT NULL,
+          allow_training TEXT NOT NULL,
+          source TEXT,
+          policy_url TEXT,
+          policy_hash TEXT,
+          note TEXT,
+          prev_hash TEXT,
+          chain_hash TEXT,
+          attest_id TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_consent_records_api_key
+          ON consent_records(api_key, timestamp DESC);
+        CREATE INDEX IF NOT EXISTS idx_consent_records_vendor
+          ON consent_records(api_key, vendor);
         """
     )
 
@@ -1447,6 +1466,93 @@ def insert_research_timeline(row: Dict[str, Any], *, db_path: Optional[Path] = N
     _note_tip(row["api_key"], row["chain_hash"])
 
 
+def insert_consent_record(row: Dict[str, Any], *, db_path: Optional[Path] = None) -> None:
+    """写入训练同意记录并追加 attestation_chain（event_type=research_consent）。"""
+    with _lock:
+        conn = connect(db_path)
+        try:
+            conn.execute(
+                """
+                INSERT INTO consent_records (
+                  id, api_key, timestamp, vendor, allow_training, source,
+                  policy_url, policy_hash, note, prev_hash, chain_hash, attest_id
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    row["id"],
+                    row["api_key"],
+                    row["timestamp"],
+                    row["vendor"],
+                    row["allow_training"],
+                    row.get("source"),
+                    row.get("policy_url"),
+                    row.get("policy_hash"),
+                    row.get("note"),
+                    row["prev_hash"],
+                    row["chain_hash"],
+                    row["attest_id"],
+                ),
+            )
+            conn.execute(
+                """
+                INSERT INTO attestation_chain
+                  (id, api_key, call_id, hash, prev_hash, timestamp, event_type, ref_id)
+                VALUES (?,?,?,?,?,?, 'research_consent', ?)
+                """,
+                (
+                    row["attest_id"],
+                    row["api_key"],
+                    row["id"],
+                    row["chain_hash"],
+                    row["prev_hash"],
+                    row["timestamp"],
+                    row["id"],
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    _note_tip(row["api_key"], row["chain_hash"])
+
+
+def get_consent_record(
+    consent_id: str, *, db_path: Optional[Path] = None
+) -> Optional[Dict[str, Any]]:
+    with _lock:
+        conn = connect(db_path)
+        try:
+            row = conn.execute(
+                "SELECT * FROM consent_records WHERE id=?", (consent_id,)
+            ).fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+
+def list_consent_records(
+    api_key: str,
+    *,
+    limit: int = 200,
+    db_path: Optional[Path] = None,
+) -> List[Dict[str, Any]]:
+    """按时间倒序；用于当前有效同意与审计历史。"""
+    with _lock:
+        conn = connect(db_path)
+        try:
+            rows = conn.execute(
+                """
+                SELECT * FROM consent_records
+                WHERE api_key=?
+                ORDER BY timestamp DESC, id DESC
+                LIMIT ?
+                """,
+                (api_key, int(limit)),
+            ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            conn.close()
+
+
 def get_research_timeline(
     timeline_id: str, *, db_path: Optional[Path] = None
 ) -> Optional[Dict[str, Any]]:
@@ -1674,6 +1780,7 @@ def enrich_maps_for_chain(
     marks: Dict[str, Dict[str, Any]] = {}
     arts: Dict[str, Dict[str, Any]] = {}
     timelines: Dict[str, Dict[str, Any]] = {}
+    consents: Dict[str, Dict[str, Any]] = {}
     for row in chain_rows:
         et = str(row.get("event_type") or "call")
         ref = str(row.get("ref_id") or row.get("call_id") or "")
@@ -1715,6 +1822,12 @@ def enrich_maps_for_chain(
             t = get_research_timeline(ref, db_path=db_path)
             if t and t.get("api_key") == api_key:
                 timelines[ref] = t
+        elif et == "research_consent":
+            if ref in consents:
+                continue
+            cn = get_consent_record(ref, db_path=db_path)
+            if cn and cn.get("api_key") == api_key:
+                consents[ref] = cn
         else:
             if ref in calls:
                 continue
@@ -1729,6 +1842,7 @@ def enrich_maps_for_chain(
         "drift_marks_by_id": marks,
         "artifacts_by_id": arts,
         "timelines_by_id": timelines,
+        "consents_by_id": consents,
     }
 
 
