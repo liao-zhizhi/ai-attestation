@@ -138,6 +138,22 @@ cd backend && PYTHONPATH=app python -m pytest tests/ -q
 
 ---
 
+## Relation to SAIR's Open Math Model Initiative
+
+In September 2026, Terence Tao and fellow Fields Medalists launched SAIR Foundation's Open Math Model Initiative, which states three principles:
+
+- Data should not enter training sets without explicit researcher consent
+- Model outputs must have traceable provenance
+- Results must be reproducible and independently checkable
+
+AI Behavior Attestation Layer provides the technical implementation for all three:
+
+- **Explicit consent**: per-vendor training-consent records, each change appended to the evidence chain
+- **Traceable provenance**: research priority deposit and call-to-artifact timeline
+- **Reproducible checks**: offline verify packs and public verify links
+
+We are not affiliated with SAIR and do not replace its governance framework — we provide the "verifiable evidence" layer beneath it.
+
 ## FAQ
 
 **How is this different from LLMOps tools?**
