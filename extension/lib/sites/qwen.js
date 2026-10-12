@@ -1,10 +1,17 @@
-/* 通义千问。优先用页面上的输入框、发送按钮和回答容器；对不上时退回回车 + 可见文本。 */
+/* 通义千问（qianwen.com）。先用精确节点；页面上没有这些节点时，退回回车后抓取可见文本。 */
 (function (root) {
   if (typeof root.ataRegisterSite !== "function") return;
 
-  const INPUT_SELECTORS = ["textarea.message-input-textarea", "[class*='message-input']"];
-  const ANSWER_SELECTORS = [".response-message-content", "[class*='response-message']"];
-  const DONE_SELECTORS = [".copy-response-button", "[class*='copy']"];
+  /* 输入框。回车或点发送时从这里读提问；读完页面通常会清空。 */
+  const INPUT_SELECTOR = "textarea.message-input-textarea";
+  /* 发送按钮。点它等同于回车。只认这个类，避免误点别的按钮。 */
+  const SEND_SELECTOR = ".message-input-right-button-send";
+  /* 回答结束。这个按钮出现，表示本轮回答已经写完，可以记指纹。 */
+  const DONE_SELECTOR = ".copy-response-button";
+  /* 回答正文。要同时有 phase-answer，生成过程中的别的阶段不算。 */
+  const ANSWER_SELECTOR = ".response-message-content.phase-answer";
+  /* 用户提问。输入框被清空后，用最后一条提问补上原文。 */
+  const QUESTION_SELECTOR = "[data-chat-list-key$='-question']";
 
   root.ataRegisterSite({
     id: "qwen",
@@ -12,13 +19,18 @@
     filenameHint: "qwen-turn",
     hosts: ["qianwen.com", "www.qianwen.com", "tongyi.aliyun.com", "www.tongyi.com", "qianwen.aliyun.com"],
     modelNeedles: ["Qwen", "通义", "千问", "模型", "Model"],
-    selectors: INPUT_SELECTORS.concat(ANSWER_SELECTORS, [
+    selectors: [
+      INPUT_SELECTOR,
+      SEND_SELECTOR,
+      DONE_SELECTOR,
+      ANSWER_SELECTOR,
+      QUESTION_SELECTOR,
       "[class*='message']",
       "[class*='chat']",
       "[class*='markdown']",
       "[class*='conversation']",
       "[class*='dialog']",
-    ]),
+    ],
   });
 
   function textOf(el) {
@@ -26,29 +38,12 @@
     return String(el.innerText || el.textContent || "").replace(/\r\n/g, "\n").trim();
   }
 
-  function queryAll(doc, selectors) {
-    const found = [];
-    selectors.forEach((sel) => {
-      try {
-        doc.querySelectorAll(sel).forEach((el) => {
-          if (found.indexOf(el) === -1) found.push(el);
-        });
-      } catch (_err) {
-        /* 选择器写错时跳过，继续用剩下的 */
-      }
-    });
-    return found;
-  }
-
-  function lastText(doc, selectors) {
-    const nodes = queryAll(doc, selectors).filter((el) => textOf(el) && !(el.closest && el.closest("textarea, input")));
-    return nodes.length ? textOf(nodes[nodes.length - 1]).slice(0, 20000) : "";
-  }
-
-  function visibleText(doc) {
-    const body = doc.body;
-    if (!body) return "";
-    return String(body.innerText || "").replace(/\r\n/g, "\n").trim().slice(0, 20000);
+  function queryAll(doc, selector) {
+    try {
+      return [...doc.querySelectorAll(selector)];
+    } catch (_err) {
+      return [];
+    }
   }
 
   function fieldText(el) {
@@ -58,28 +53,38 @@
   }
 
   function inputEl(doc) {
-    const nodes = queryAll(doc, INPUT_SELECTORS).filter((el) => {
-      const tag = el.tagName;
-      if (tag === "TEXTAREA" || tag === "INPUT") return true;
-      const editable = el.getAttribute && el.getAttribute("contenteditable");
-      return editable === "" || editable === "true";
-    });
+    return doc.querySelector(INPUT_SELECTOR);
+  }
+
+  function lastQuestion(doc) {
+    const nodes = queryAll(doc, QUESTION_SELECTOR);
+    return nodes.length ? textOf(nodes[nodes.length - 1]).slice(0, 20000) : "";
+  }
+
+  function latestAnswer(doc) {
+    const nodes = queryAll(doc, ANSWER_SELECTOR).filter((el) => textOf(el));
     return nodes.length ? nodes[nodes.length - 1] : null;
   }
 
-  function sendButton(target) {
-    if (!target || !target.closest) return null;
-    const specific = target.closest(".message-input-right-button-send");
-    if (specific) return specific;
-    const broad = target.closest("[class*='send']");
-    if (!broad) return null;
-    if (broad.tagName === "BUTTON" || broad.getAttribute("role") === "button") return broad;
-    return null;
+  function visibleText(doc) {
+    const body = doc.body;
+    if (!body) return "";
+    return String(body.innerText || "").replace(/\r\n/g, "\n").trim().slice(0, 20000);
   }
 
   function editableOf(target) {
     if (!target || !target.closest) return null;
-    return target.closest("textarea, input, [contenteditable='true'], [contenteditable='']");
+    const el = target.closest("textarea, input, [contenteditable='true'], [contenteditable='']");
+    if (!el) return null;
+    if (el.tagName === "INPUT") {
+      const type = String(el.getAttribute("type") || "text").toLowerCase();
+      if (type && type !== "text" && type !== "search") return null;
+    }
+    return el;
+  }
+
+  function hasPreciseDom(doc) {
+    return Boolean(doc.querySelector(INPUT_SELECTOR + "," + QUESTION_SELECTOR + "," + ANSWER_SELECTOR));
   }
 
   function watchQwen(site) {
@@ -121,16 +126,16 @@
     }
 
     function arm(prompt) {
-      const text = String(prompt || "").trim();
+      const text = String(prompt || "").trim() || lastQuestion(document);
       if (!text) return;
       pending = {
         prompt: text,
         url: location.href,
         recordedAt: new Date().toISOString(),
         at: Date.now(),
-        answerBefore: lastText(document, ANSWER_SELECTORS),
+        answerBefore: textOf(latestAnswer(document)),
         pageBefore: visibleText(document),
-        doneBefore: queryAll(document, DONE_SELECTORS).length,
+        copies: new Set(queryAll(document, DONE_SELECTOR)),
       };
       clearTimeout(timer);
       timer = setTimeout(settle, 1000);
@@ -141,7 +146,7 @@
       if (!canon.degraded && !canon.response) return;
       const bytes = new TextEncoder().encode(canon.text);
       const hash = root.ataSha256Hex(bytes);
-      const key = `${canon.prompt}\u0000${canon.response}`;
+      const key = canon.degraded ? `degraded\u0000${canon.prompt}` : `${canon.prompt}\u0000${canon.response}`;
       if (recorded.has(key)) return;
       recorded.add(key);
       let res = null;
@@ -178,38 +183,43 @@
       return "通义千问";
     }
 
+    function recordAnswer(prompt, response) {
+      const canon = root.ataCanonical({
+        site: site.id,
+        model: modelName(),
+        prompt,
+        response,
+      });
+      pending = null;
+      sendTurn(canon);
+    }
+
     function settle() {
       if (!pending) return;
-      const answer = lastText(document, ANSWER_SELECTORS);
-      const page = visibleText(document);
-      const done = queryAll(document, DONE_SELECTORS).length;
+      const answerEl = latestAnswer(document);
+      const answer = textOf(answerEl).slice(0, 20000);
+      const freshCopy = queryAll(document, DONE_SELECTOR).some((el) => !pending.copies.has(el));
       const age = Date.now() - pending.at;
-      const copied = done > pending.doneBefore;
-      if (answer && answer !== pending.answerBefore && (copied || age >= 1000)) {
-        const canon = root.ataCanonical({
-          site: site.id,
-          model: modelName(),
-          prompt: pending.prompt,
-          response: answer,
-        });
-        pending = null;
-        sendTurn(canon);
+      /* 精确路径：新的复制按钮出现，并且最后一条 phase-answer 是新正文。 */
+      if (freshCopy && answer && answer !== pending.answerBefore) {
+        recordAnswer(pending.prompt || lastQuestion(document), answer);
         return;
       }
-      const hasAnswerNode = queryAll(document, ANSWER_SELECTORS).length > 0;
-      if (!hasAnswerNode && page && page !== pending.pageBefore && age >= 3000) {
-        const canon = root.ataCanonical({
-          site: site.id,
-          model: modelName(),
-          prompt: pending.prompt,
-          response: page,
-        });
-        pending = null;
-        sendTurn(canon);
-        return;
+      /* 降级：页面上没有输入框、提问或回答节点时，DOM 停稳后记可见文本。 */
+      if (!hasPreciseDom(document)) {
+        const page = visibleText(document);
+        if (page && page !== pending.pageBefore && age >= 1000) {
+          recordAnswer(pending.prompt, page);
+          return;
+        }
       }
       if (age < 60000) {
         timer = setTimeout(settle, 1000);
+        return;
+      }
+      const page = visibleText(document);
+      if (page && page !== pending.pageBefore) {
+        recordAnswer(pending.prompt, page);
         return;
       }
       const canon = root.ataCanonical({
@@ -231,10 +241,15 @@
         if (event.key !== "Enter" || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey || event.isComposing) {
           return;
         }
+        const named = inputEl(document);
+        if (named) {
+          if (event.target !== named && !(named.contains && named.contains(event.target))) return;
+          arm(fieldText(named));
+          return;
+        }
+        /* 没有精确输入框时，任意输入区的回车都算提交。 */
         const focused = editableOf(event.target);
         if (!focused) return;
-        const named = inputEl(document);
-        if (named && focused !== named && !(named.contains && named.contains(focused))) return;
         arm(fieldText(focused));
       },
       true
@@ -243,20 +258,17 @@
     document.addEventListener(
       "click",
       (event) => {
-        if (!sendButton(event.target)) return;
+        if (!event.target || !event.target.closest || !event.target.closest(SEND_SELECTOR)) return;
         const named = inputEl(document);
-        const focused = editableOf(document.activeElement);
-        const field = focused && (!named || focused === named || (named.contains && named.contains(focused))) ? focused : named;
-        arm(fieldText(field));
+        arm(fieldText(named) || lastQuestion(document));
       },
       true
     );
 
     const observer = new MutationObserver(() => {
-      if (pending) {
-        clearTimeout(timer);
-        timer = setTimeout(settle, 1000);
-      }
+      if (!pending) return;
+      clearTimeout(timer);
+      timer = setTimeout(settle, 1000);
     });
     const watchRoot = document.documentElement || document.body;
     if (watchRoot) observer.observe(watchRoot, { childList: true, subtree: true, characterData: true });
