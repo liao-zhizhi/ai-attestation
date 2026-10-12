@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>AI 对话见证</title>
+    <style>
+      body {
+        margin: 0;
+        width: 340px;
+        background: #0e141c;
+        color: #d7e0ea;
+        font: 13px/1.45 "Segoe UI", sans-serif;
+      }
+      header, main, footer {
+        padding: 12px 14px;
+      }
+      header {
+        border-bottom: 1px solid #1e2a38;
+      }
+      h1 {
+        margin: 0;
+        font-size: 16px;
+      }
+      .sub, .hint, .meta {
+        color: #9eb2c7;
+        font-size: 12px;
+      }
+      label {
+        display: block;
+        margin: 8px 0 4px;
+        color: #9eb2c7;
+        font-size: 12px;
+      }
+      input {
+        width: 100%;
+        box-sizing: border-box;
+        background: #111821;
+        color: #d7e0ea;
+        border: 1px solid #2a3b52;
+        border-radius: 4px;
+        padding: 8px;
+      }
+      button, .row button {
+        background: #152033;
+        color: #d7e0ea;
+        border: 1px solid #2a3b52;
+        border-radius: 4px;
+        padding: 8px 10px;
+        cursor: pointer;
+      }
+      button.accent {
+        background: #1a3d2c;
+        border-color: #2a5c42;
+        color: #3dd68c;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        margin-top: 10px;
+      }
+      .row button {
+        flex: 1;
+      }
+      .err {
+        color: #ff6b6b;
+        min-height: 1.2em;
+      }
+      .ok {
+        color: #3dd68c;
+      }
+      ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      li button.item {
+        width: 100%;
+        text-align: left;
+        margin-bottom: 8px;
+        background: #111821;
+      }
+      .top {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .hash {
+        font-family: ui-monospace, monospace;
+        color: #3dd68c;
+      }
+      .chain-bad {
+        color: #ff6b6b;
+      }
+      details {
+        margin-top: 8px;
+      }
+      footer {
+        border-top: 1px solid #1e2a38;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>AI 对话见证</h1>
+      <p class="sub">在 ChatGPT 和 DeepSeek 页面留下对话指纹。原文不会上传。</p>
+    </header>
+    <main id="guest" hidden>
+      <label for="email">邮箱</label>
+      <input id="email" type="email" autocomplete="email" placeholder="you@example.com" />
+      <div class="row">
+        <button id="send" type="button">发送验证码</button>
+      </div>
+      <label for="code">验证码</label>
+      <input id="code" inputmode="numeric" autocomplete="one-time-code" placeholder="6 位数字" disabled />
+      <p class="hint" id="code-hint" hidden>测试阶段不会发邮件。验证码固定是 123456。</p>
+      <div class="row">
+        <button id="login" class="accent" type="button" disabled>登录</button>
+      </div>
+      <p class="err" id="guest-err"></p>
+    </main>
+    <main id="home" hidden>
+      <p class="ok" id="who"></p>
+      <p class="hint">最近 10 条。点一条打开网站上的详情页。</p>
+      <ul id="list"></ul>
+      <p class="hint" id="empty" hidden>还没有见证记录。登录后去 ChatGPT 或 DeepSeek 聊一轮即可。</p>
+      <p class="err" id="home-err"></p>
+    </main>
+    <footer>
+      <details>
+        <summary>服务器地址</summary>
+        <label for="base">接口地址</label>
+        <input id="base" spellcheck="false" />
+        <div class="row">
+          <button id="save-base" type="button">保存地址</button>
+          <button id="logout" type="button" hidden>退出登录</button>
+        </div>
+      </details>
+      <p class="meta">导出离线验证包还没做。这不是 Chrome 商店里的扩展。</p>
+    </footer>
+    <script src="popup.js"></script>
+  </body>
+</html>

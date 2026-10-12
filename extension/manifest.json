@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "AI 对话见证",
+  "version": "0.1.0",
+  "description": "在 ChatGPT 和 DeepSeek 页面本地计算对话指纹并写入见证记录。不上传原文。",
+  "minimum_chrome_version": "120",
+  "permissions": ["storage", "tabs"],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*",
+    "https://chat.deepseek.com/*",
+    "http://47.119.118.245:8004/*",
+    "http://127.0.0.1:8004/*",
+    "http://localhost:8004/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "AI 对话见证",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://chat.deepseek.com/*"
+      ],
+      "js": ["lib/sha256.js", "lib/record.js", "lib/read.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
