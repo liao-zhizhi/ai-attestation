@@ -21,8 +21,8 @@
 | ChatGPT（`chatgpt.com`、`chat.openai.com`） | 代码完成，选择器按页面结构写过，待你本机再确认 |
 | 智谱清言（`chatglm.cn`、`chat.z.ai`） | 代码完成，待用户测试 |
 | Kimi（`kimi.moonshot.cn`、`kimi.com`） | 代码完成，待用户测试 |
-| 通义千问（`tongyi.aliyun.com`、`www.tongyi.com`、`qianwen.aliyun.com`） | 代码完成，待用户测试 |
-| 文心一言（`yiyan.baidu.com`） | 代码完成，待用户测试 |
+| 通义千问（`qianwen.com`，以及 `tongyi.aliyun.com`） | 代码完成，待用户测试。优先认回答容器，对不上就记可见文本 |
+| 文心一言（`wenxin.baidu.com`，以及 `yiyan.baidu.com`） | 代码完成，待用户测试。回车后等页面稳定，再对可见文本做指纹 |
 
 ChatGPT 和 DeepSeek 用各自的页面选择器。后四个站点各自一个文件（`extension/lib/sites/`），共用同一套做法：常见消息容器、回车提交、页面变化停 1 秒后再记。读不到完整问答时，只记提问的指纹、页面地址和时间，模型名写成 `unknown`。
 
