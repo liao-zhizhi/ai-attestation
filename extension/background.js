@@ -1,3 +1,4 @@
+console.log("[AI-Attest] background.js 已加载");
 importScripts("lib/sha256.js", "lib/record.js", "lib/api.js");
 
 const SEEN_LIMIT = 300;
@@ -197,6 +198,7 @@ async function handle(msg) {
     const hash = String(msg.hash || "").toLowerCase();
     if (!/^[0-9a-f]{64}$/.test(hash)) return { ok: false, error: "指纹无效" };
     if (state.seenHashes.includes(hash)) return { ok: true, duplicate: true };
+    console.log("[AI-Attest] 准备写入证据链...");
     const saved = await ataRegisterArtifact(state.apiBase, state.apiKey, {
       title: String(msg.title || "对话").slice(0, 200),
       hash,
@@ -214,9 +216,11 @@ async function handle(msg) {
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  console.log("[AI-Attest] background 收到消息:", msg && msg.type);
   handle(msg)
     .then(sendResponse)
     .catch((err) => {
+      console.error("[AI-Attest] 出错:", err);
       sendResponse({ ok: false, error: err instanceof Error ? err.message : "请求失败" });
     });
   return true;

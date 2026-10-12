@@ -1,3 +1,4 @@
+console.log("[AI-Attest] qwen.js 已加载，开始查找输入框...");
 /* 通义千问（qianwen.com）。
    页面是 Tailwind 原子类，class 一改版就失效，所以不靠 class 名。
    输入框是 contenteditable 的 div，没有稳定的发送按钮，用回车当作提交。 */
@@ -107,7 +108,9 @@
   function composerOf(target) {
     if (!target || !target.closest) return null;
     const el = target.closest(INPUT_SELECTOR);
-    if (!el || !el.getBoundingClientRect) return el;
+    if (!el) return null;
+    console.log("[AI-Attest] 找到输入框:", el.tagName);
+    if (!el.getBoundingClientRect) return el;
     const rect = el.getBoundingClientRect();
     if (rect.width > 0 && rect.width < 80) return null;
     return el;
@@ -175,6 +178,7 @@
       if (recorded.has(key)) return;
       recorded.add(key);
       let res = null;
+      console.log("[AI-Attest] 准备写入证据链...");
       try {
         res = await chrome.runtime.sendMessage({
           type: "record",
@@ -183,10 +187,12 @@
           title: canon.title,
           filenameHint: canon.filenameHint,
         });
-      } catch (_err) {
+      } catch (err) {
+        console.error("[AI-Attest] 出错:", err);
         recorded.delete(key);
         return;
       }
+      console.log("[AI-Attest] 写入结果:", res && res.ok);
       if (!res || !res.ok) {
         recorded.delete(key);
         if (res && res.reason === "login" && !toldToLogin) {
@@ -201,6 +207,7 @@
     function settle() {
       if (!pending) return;
       const answer = answerIn(findContainer(document, pending.input, pending.prompt), pending.prompt, pending.input);
+      if (answer) console.log("[AI-Attest] 提取到回答，长度:", answer.length);
       const fresh = answer && answer !== pending.prompt && answer !== pending.answerBefore;
       if (fresh) {
         const canon = root.ataCanonical({
@@ -237,6 +244,7 @@
       (event) => {
         /* Shift+Enter 是换行。输入法选字时的 Enter 也不是提交。 */
         if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
+        console.log("[AI-Attest] 检测到回车提交");
         const input = composerOf(event.target);
         if (!input) return;
         arm(input, textOf(input));

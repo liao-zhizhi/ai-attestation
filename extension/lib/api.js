@@ -47,6 +47,7 @@
         client_hashed: true,
       }),
     });
+    console.log("[AI-Attest] 写入结果:", res && res.status);
     if (!res.ok) throw new Error(await ataReadError(res));
     return res.json();
   }
