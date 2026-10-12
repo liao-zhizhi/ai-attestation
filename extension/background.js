@@ -70,10 +70,18 @@ function writeSiteAccount(tabId, apiKey) {
   });
 }
 
-/** 登录后把编号写入网站源站的 localStorage。已打开的页面会刷新一次以读到当前账号。 */
-async function syncKeyToSite(apiKey) {
-  const key = String(apiKey || "").trim();
-  if (key.length < 8) throw new Error("编号无效");
+function clearSiteAccount(tabId) {
+  return chrome.scripting.executeScript({
+    target: { tabId },
+    world: "MAIN",
+    args: [SITE_ACCOUNT_KEY],
+    func: (storageKey) => {
+      localStorage.removeItem(storageKey);
+    },
+  });
+}
+
+async function withSiteTabs(write) {
   const existing = await chrome.tabs.query({ url: SITE_MATCH });
   let createdId = null;
   let tabIds = existing.map((tab) => tab.id).filter((id) => id != null);
@@ -84,15 +92,27 @@ async function syncKeyToSite(apiKey) {
     tabIds = [createdId];
   }
   for (const tabId of tabIds) {
-    await writeSiteAccount(tabId, key);
+    await write(tabId);
   }
   if (createdId != null) {
     await delay(600);
-    await writeSiteAccount(createdId, key);
+    await write(createdId);
     await chrome.tabs.remove(createdId);
     return;
   }
   await Promise.all(tabIds.map((tabId) => chrome.tabs.reload(tabId)));
+}
+
+/** 登录后把编号写入网站源站的 localStorage。已打开的页面会刷新一次以读到当前账号。 */
+async function syncKeyToSite(apiKey) {
+  const key = String(apiKey || "").trim();
+  if (key.length < 8) throw new Error("编号无效");
+  await withSiteTabs((tabId) => writeSiteAccount(tabId, key));
+}
+
+/** 退出时删掉网站上的当前账号。已打开的页面会刷新一次。 */
+async function clearKeyOnSite() {
+  await withSiteTabs((tabId) => clearSiteAccount(tabId));
 }
 
 async function rememberHash(hash) {
@@ -119,7 +139,15 @@ async function handle(msg) {
   }
   if (msg.type === "logout") {
     await storageSet({ apiKey: "", email: "" });
-    return { ok: true };
+    let siteCleared = false;
+    let syncError = "";
+    try {
+      await clearKeyOnSite();
+      siteCleared = true;
+    } catch (err) {
+      syncError = err instanceof Error ? err.message : "没能清除网站上的编号";
+    }
+    return { ok: true, siteCleared, syncError };
   }
   if (msg.type === "login") {
     const email = String(msg.email || "").trim();
@@ -144,6 +172,14 @@ async function handle(msg) {
     if (state.apiKey.length < 8) return { ok: false, error: "请先登录" };
     const artifacts = await ataListArtifacts(state.apiBase, state.apiKey);
     return { ok: true, artifacts };
+  }
+  if (msg.type === "export") {
+    const state = await sessionState();
+    if (state.apiKey.length < 8) return { ok: false, error: "请先登录" };
+    const id = String(msg.id || "");
+    if (!id) return { ok: false, error: "缺少记录" };
+    const filename = await ataDownloadCertificate(state.apiBase, state.apiKey, id);
+    return { ok: true, filename };
   }
   if (msg.type === "open") {
     const state = await sessionState();

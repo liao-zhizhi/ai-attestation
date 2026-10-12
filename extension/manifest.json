@@ -2,13 +2,23 @@
   "manifest_version": 3,
   "name": "AI 对话见证",
   "version": "0.1.0",
-  "description": "在 ChatGPT 和 DeepSeek 页面本地计算对话指纹并写入见证记录。不上传原文。",
+  "description": "在聊天页本地计算对话指纹并写入见证记录。不上传原文。",
   "minimum_chrome_version": "120",
-  "permissions": ["storage", "tabs", "scripting"],
+  "permissions": ["storage", "tabs", "scripting", "downloads"],
   "host_permissions": [
     "https://chatgpt.com/*",
     "https://chat.openai.com/*",
     "https://chat.deepseek.com/*",
+    "https://chatglm.cn/*",
+    "https://*.chatglm.cn/*",
+    "https://chat.z.ai/*",
+    "https://kimi.moonshot.cn/*",
+    "https://kimi.com/*",
+    "https://www.kimi.com/*",
+    "https://tongyi.aliyun.com/*",
+    "https://www.tongyi.com/*",
+    "https://qianwen.aliyun.com/*",
+    "https://yiyan.baidu.com/*",
     "https://ai-attestation.com/*",
     "http://47.119.118.245:8004/*",
     "http://127.0.0.1:8004/*",
@@ -39,6 +49,31 @@
         "https://chat.deepseek.com/*"
       ],
       "js": ["lib/sha256.js", "lib/record.js", "lib/read.js", "content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://chatglm.cn/*",
+        "https://*.chatglm.cn/*",
+        "https://chat.z.ai/*",
+        "https://kimi.moonshot.cn/*",
+        "https://kimi.com/*",
+        "https://www.kimi.com/*",
+        "https://tongyi.aliyun.com/*",
+        "https://www.tongyi.com/*",
+        "https://qianwen.aliyun.com/*",
+        "https://yiyan.baidu.com/*"
+      ],
+      "js": [
+        "lib/sha256.js",
+        "lib/record.js",
+        "lib/sites/generic.js",
+        "lib/sites/zhipu.js",
+        "lib/sites/kimi.js",
+        "lib/sites/qwen.js",
+        "lib/sites/yiyan.js",
+        "content-generic.js"
+      ],
       "run_at": "document_idle"
     }
   ]

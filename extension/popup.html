@@ -17,9 +17,22 @@
       header {
         border-bottom: 1px solid #1e2a38;
       }
+      .head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
       h1 {
         margin: 0;
         font-size: 16px;
+      }
+      button.quiet {
+        background: transparent;
+        color: #9eb2c7;
+        border-color: transparent;
+        padding: 4px 8px;
+        font-size: 12px;
       }
       .sub, .hint, .meta {
         color: #9eb2c7;
@@ -73,11 +86,25 @@
         margin: 0;
         padding: 0;
       }
-      li button.item {
-        width: 100%;
-        text-align: left;
+      .item-row {
+        display: flex;
+        gap: 8px;
+        align-items: stretch;
         margin-bottom: 8px;
+      }
+      li button.item {
+        width: auto;
+        flex: 1;
+        text-align: left;
+        margin-bottom: 0;
         background: #111821;
+      }
+      button.export {
+        flex: none;
+        align-self: stretch;
+        padding: 8px;
+        font-size: 12px;
+        color: #9eb2c7;
       }
       .top {
         display: flex;
@@ -101,10 +128,14 @@
   </head>
   <body>
     <header>
-      <h1>AI 对话见证</h1>
-      <p class="sub">在 ChatGPT 和 DeepSeek 页面留下对话指纹。原文不会上传。</p>
+      <div class="head">
+        <h1>AI 对话见证</h1>
+        <button id="logout" class="quiet" type="button" hidden>退出登录</button>
+      </div>
+      <p class="sub">在聊天页留下对话指纹。原文不会上传。</p>
     </header>
     <main id="guest" hidden>
+      <p class="ok" id="guest-note"></p>
       <label for="email">邮箱</label>
       <input id="email" type="email" autocomplete="email" placeholder="you@example.com" />
       <div class="row">
@@ -121,9 +152,9 @@
     <main id="home" hidden>
       <p class="ok" id="who"></p>
       <p class="hint" id="sync-note"></p>
-      <p class="hint">最近 10 条。点一条打开网站上的详情页。</p>
+      <p class="hint">最近 10 条。点一条打开详情，点「导出」下载验证包。</p>
       <ul id="list"></ul>
-      <p class="hint" id="empty" hidden>还没有见证记录。登录后去 ChatGPT 或 DeepSeek 聊一轮即可。</p>
+      <p class="hint" id="empty" hidden>还没有见证记录。登录后去聊天页发一轮即可。</p>
       <p class="err" id="home-err"></p>
     </main>
     <footer>
@@ -133,10 +164,9 @@
         <input id="base" spellcheck="false" />
         <div class="row">
           <button id="save-base" type="button">保存地址</button>
-          <button id="logout" type="button" hidden>退出登录</button>
         </div>
       </details>
-      <p class="meta">导出离线验证包还没做。这不是 Chrome 商店里的扩展。</p>
+      <p class="meta">这不是 Chrome 商店里的扩展。</p>
     </footer>
     <script src="popup.js"></script>
   </body>

@@ -72,6 +72,47 @@
     return res.json();
   }
 
+  function ataCertificateFilename(artifactId, disposition) {
+    const header = String(disposition || "");
+    const star = /filename\*=UTF-8''([^;]+)/i.exec(header);
+    const plain = /filename="?([^";]+)"?/i.exec(header);
+    const named = star ? decodeURIComponent(star[1]) : plain ? plain[1].trim() : "";
+    if (/^ata_priority_[A-Za-z0-9_-]{1,64}_cert\.zip$/.test(named)) return named;
+    const safe = String(artifactId || "").replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 64) || "artifact";
+    return `ata_priority_${safe}_cert.zip`;
+  }
+
+  async function ataDownloadCertificate(apiBase, apiKey, artifactId) {
+    const id = String(artifactId || "");
+    const res = await fetch(
+      `${ataNormalizeBase(apiBase)}/v1/research/artifacts/${encodeURIComponent(id)}/certificate`,
+      { headers: { "X-Attest-Key": apiKey } }
+    );
+    if (!res.ok) throw new Error(await ataReadError(res));
+    const blob = await res.blob();
+    const filename = ataCertificateFilename(id, res.headers.get("Content-Disposition"));
+    let url = "";
+    try {
+      url = URL.createObjectURL(blob);
+    } catch (_err) {
+      url = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(reader.error || new Error("读验证包失败"));
+        reader.readAsDataURL(blob);
+      });
+    }
+    try {
+      await chrome.downloads.download({ url, filename, saveAs: false });
+    } finally {
+      if (url.startsWith("blob:")) {
+        const blobUrl = url;
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
+      }
+    }
+    return filename;
+  }
+
   function ataDetailUrl(apiBase, share) {
     const token = share && share.token ? String(share.token) : "";
     const base = ataNormalizeBase(apiBase);
@@ -88,5 +129,7 @@
   root.ataRegisterArtifact = ataRegisterArtifact;
   root.ataListArtifacts = ataListArtifacts;
   root.ataShareArtifact = ataShareArtifact;
+  root.ataCertificateFilename = ataCertificateFilename;
+  root.ataDownloadCertificate = ataDownloadCertificate;
   root.ataDetailUrl = ataDetailUrl;
 })(globalThis);

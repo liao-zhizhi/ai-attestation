@@ -9,6 +9,7 @@ const list = document.getElementById("list");
 const empty = document.getElementById("empty");
 const who = document.getElementById("who");
 const syncNote = document.getElementById("sync-note");
+const guestNote = document.getElementById("guest-note");
 const baseInput = document.getElementById("base");
 const logoutBtn = document.getElementById("logout");
 
@@ -45,6 +46,8 @@ function renderList(artifacts) {
   empty.hidden = rows.length > 0;
   rows.forEach((row) => {
     const li = document.createElement("li");
+    const wrap = document.createElement("div");
+    wrap.className = "item-row";
     const button = document.createElement("button");
     button.type = "button";
     button.className = "item";
@@ -66,16 +69,39 @@ function renderList(artifacts) {
     digest.textContent = hash;
     button.append(top, model, digest);
     button.addEventListener("click", async () => {
+      homeErr.className = "err";
       homeErr.textContent = "正在打开详情…";
       const res = await send({ type: "open", id: row.id });
       homeErr.textContent = res && res.ok ? "" : (res && res.error) || "打不开详情页";
     });
-    li.append(button);
+    const exp = document.createElement("button");
+    exp.type = "button";
+    exp.className = "export";
+    exp.textContent = "导出";
+    exp.addEventListener("click", async () => {
+      exp.disabled = true;
+      exp.textContent = "导出中";
+      homeErr.className = "err";
+      homeErr.textContent = "";
+      const res = await send({ type: "export", id: row.id });
+      exp.disabled = false;
+      exp.textContent = "导出";
+      if (res && res.ok) {
+        homeErr.className = "ok";
+        homeErr.textContent = "已开始下载";
+      } else {
+        homeErr.className = "err";
+        homeErr.textContent = (res && res.error) || "导出失败";
+      }
+    });
+    wrap.append(button, exp);
+    li.append(wrap);
     list.append(li);
   });
 }
 
 async function refresh() {
+  homeErr.className = "err";
   homeErr.textContent = "";
   const res = await send({ type: "list" });
   if (!res || !res.ok) {
@@ -107,6 +133,7 @@ async function boot() {
 
 document.getElementById("send").addEventListener("click", async () => {
   guestErr.textContent = "";
+  guestNote.textContent = "";
   const email = emailInput.value.trim();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     guestErr.textContent = "请填写有效邮箱";
@@ -155,7 +182,14 @@ document.getElementById("save-base").addEventListener("click", async () => {
 });
 
 logoutBtn.addEventListener("click", async () => {
-  await send({ type: "logout" });
+  logoutBtn.disabled = true;
+  const res = await send({ type: "logout" });
+  logoutBtn.disabled = false;
+  if (!res || !res.ok) {
+    homeErr.className = "err";
+    homeErr.textContent = (res && res.error) || "退出失败";
+    return;
+  }
   pendingEmail = "";
   codeInput.value = "";
   codeInput.disabled = true;
@@ -163,6 +197,9 @@ logoutBtn.addEventListener("click", async () => {
   codeHint.hidden = true;
   syncNote.textContent = "";
   showGuest();
+  guestNote.textContent = res.siteCleared === false
+    ? `已退出。网站上的编号没能清掉：${res.syncError || "请再打开一次网站"}`
+    : "已退出";
 });
 
 boot().catch((err) => {
