@@ -18,10 +18,21 @@ import { Timeline, type ApiCall } from "@/components/Timeline";
 import { TrendCharts, type DayPoint, type VendorSlice } from "@/components/TrendCharts";
 import { UserGuide } from "@/components/UserGuide";
 import { ResearchTab } from "@/components/ResearchTab";
+import { StartGuide } from "@/components/StartGuide";
+import { ACCOUNT_STORAGE_KEY as STORAGE_KEY, AUTH_STORAGE_KEY } from "@/lib/account";
 import { resolveApiBase, parseApiError, formatDetail, withApiKey, localDatetimeToUtcIso, utcIsoToLocalDatetime } from "@/lib/api";
 
-const STORAGE_KEY = "ata_mvp_api_key";
-const AUTH_STORAGE_KEY = "ata_mvp_authorization";
+const NAV_IDS: NavId[] = [
+  "guide",
+  "research",
+  "dashboard",
+  "calls",
+  "compliance",
+  "behavior",
+  "attestation",
+  "settings",
+  "keys",
+];
 
 function envApiBase(): string {
   return (
@@ -53,7 +64,7 @@ const VENDOR_COLORS = [
 ];
 
 export default function HomePage() {
-  const [nav, setNav] = useState<NavId>("keys");
+  const [nav, setNav] = useState<NavId>("dashboard");
   // Start from build-time env; resolveApiBase() corrects remote→localhost mistakes after mount.
   const [apiBase, setApiBase] = useState(envApiBase);
   const [apiReady, setApiReady] = useState(false);
@@ -127,11 +138,7 @@ export default function HomePage() {
     if (savedAuth) setAuthorization(savedAuth);
     if (saved) {
       setApiKey(saved);
-      // 已有 Key：默认进入「仪表盘」
-      setNav("dashboard");
     } else {
-      // 首次访问：默认高亮「Key 管理」
-      setNav("keys");
       fetch(`${apiBase}/health`)
         .then((r) => r.json())
         .then((d) => {
@@ -141,6 +148,10 @@ export default function HomePage() {
           }
         })
         .catch(() => undefined);
+    }
+    const requested = new URLSearchParams(window.location.search).get("nav");
+    if (requested && (NAV_IDS as string[]).includes(requested)) {
+      setNav(requested as NavId);
     }
   }, [apiReady, apiBase]);
 
@@ -460,7 +471,7 @@ export default function HomePage() {
               {nav === "behavior" && "监控"}
               {nav === "attestation" && "防篡改证明"}
               {nav === "settings" && "设置"}
-              {nav === "keys" && "Key 管理"}
+              {nav === "keys" && "存证账号"}
             </div>
             <div className="sub">独立验证与对账 · MVP</div>
           </div>
@@ -531,6 +542,7 @@ export default function HomePage() {
 
         {nav === "dashboard" && (
           <>
+            <StartGuide />
             <OverviewPanel
               todayCalls={todayCallsN}
               todayCost={todayCostN}

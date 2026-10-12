@@ -112,7 +112,7 @@ export function ResearchTab({ apiBase, apiKey, canWrite, onChainUpdated }: Props
         我们只保存指纹；请自己保存原件；这不是法院判决。
       </p>
       <p className="sub">
-        技术存证不能证明某家 AI 厂商训练或阅读了你的草稿。登记前请确认当前 Key
+        技术存证不能证明某家 AI 厂商训练或阅读了你的草稿。登记前请确认当前存证账号
         已在「设置」里点过「保存」。
       </p>
       {err && <p className="bad">{err}</p>}

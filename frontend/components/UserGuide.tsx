@@ -17,8 +17,8 @@ export function UserGuide({
   const py = `from openai import OpenAI
 
 # ① 两处都要换成你自己的（不要填反）
-ATA_KEY = "ata_xxxxxx"       # 「Key 管理」里生成的见证 Key
-UPSTREAM_KEY = "sk-xxxxxx"   # 上游厂商 Key（DeepSeek / OpenAI 等，不要带 Bearer 前缀）
+ATA_KEY = "ata_xxxxxx"       # 「存证账号」里生成的账号编号
+UPSTREAM_KEY = "sk-xxxxxx"   # 上游厂商密钥（DeepSeek / OpenAI 等，不要带 Bearer 前缀）
 
 client = OpenAI(
     # ② 左侧底部「复制代理 URL」得到的地址（与「设置」里 base_url 相同）
@@ -44,37 +44,41 @@ print(resp.choices[0].message.content)`;
         <li>离线验证，不依赖任何服务器</li>
       </ul>
       <p className="lead">
-        左侧菜单分两块：上面「新用户上手」（Key 管理、设置、API 调用、见证），下面「日常使用」（仪表盘、API
+        打开首页先看「你想做什么？」。左侧菜单分两块：上面「新用户上手」（存证账号、设置、API
+        调用、见证），下面「日常使用」（仪表盘、API
         调用记录、见证、监控、合规管理、防篡改证明）。最底部固定「复制代理 URL」和「操作手册」。两处「见证」是同一页。
       </p>
 
       <h3>第一部分：新用户四步上手</h3>
       <ol className="steps">
         <li>
-          <h3>1. Key 管理</h3>
-          <p>点左侧「新用户上手」里的 <strong>「Key 管理」</strong>，创建 <code>ata_xxx</code> 凭证并立刻复制保存。</p>
+          <h3>1. 存证账号</h3>
+          <p>
+            点左侧「新用户上手」里的 <strong>「存证账号」</strong>
+            ，点一下即可创建，编号会自动生成。请立刻复制保存。
+          </p>
           <ol className="sub">
             <li>
-              在输入框填写名称（占位提示：<code>输入名称，例如：我的测试</code>）
+              名称可以不填（占位提示：<code>账号名称（可不填，不填就自动生成）</code>）
             </li>
             <li>
-              点绿色按钮 <strong>「创建」</strong>
+              点绿色按钮 <strong>「创建存证账号」</strong>
             </li>
             <li>
-              出现黄色提示框 <strong>「新 Key（仅完整显示一次，请立刻复制）：」</strong>
-              ，下面是一串 <code>ata_</code> 开头的完整 Key
+              出现黄色提示框 <strong>「账号编号（只完整显示一次，请立刻复制）：」</strong>
+              ，下面是一串 <code>ata_</code> 开头的完整编号
             </li>
             <li>
-              点 <strong>「复制 Key」</strong> 保存到别处
+              点 <strong>「复制账号编号」</strong> 保存到别处
             </li>
             <li>
-              若需要切换，再点 <strong>「设为当前 Key」</strong>
-              （第一次创建且你还没有 Key 时，系统会自动设为当前）
+              若需要切换，再点 <strong>「设为当前账号」</strong>
+              （第一次创建且你还没有账号时，系统会自动设为当前）
             </li>
           </ol>
           <p className="tip">
-            完整 Key 只完整显示一次。管理员在「已有 Key」列表里通常只看到脱敏形式（如{" "}
-            <code>ata_xxxx****</code>）。点「设为当前 Key」后，再到「设置」确认并保存。
+            完整编号只完整显示一次。管理员在「已有账号」列表里通常只看到一部分（如{" "}
+            <code>ata_xxxx****</code>）。点「设为当前账号」后，再到「设置」确认并保存。
           </p>
         </li>
         <li>
@@ -85,11 +89,11 @@ print(resp.choices[0].message.content)`;
           </p>
           <ul>
             <li>
-              在标签为 <strong>「API Key（X-Attest-Key）」</strong> 的输入框填入{" "}
+              在标签为 <strong>「存证账号编号（X-Attest-Key）」</strong> 的输入框填入{" "}
               <code>ata_xxxxxx</code>
             </li>
             <li>
-              在标签为 <strong>「Authorization（上游厂商 Key，仅本机备忘）」</strong>{" "}
+              在标签为 <strong>「Authorization（上游厂商密钥，仅本机备忘）」</strong>{" "}
               的输入框可填 <code>Bearer sk-xxxxxx</code>
               ——只保存在本浏览器，网页<strong>不会</strong>用它去调上游
             </li>
@@ -99,6 +103,11 @@ print(resp.choices[0].message.content)`;
             </li>
             <li>
               点绿色按钮 <strong>「保存」</strong>
+            </li>
+            <li>
+              点 <strong>「一键复制配置」</strong>
+              ，把当前存证账号编号和代理地址写进一段 Python 代码（上游密钥仍要自己改成{" "}
+              <code>sk-…</code>）
             </li>
           </ul>
         </li>
@@ -221,11 +230,11 @@ print(resp.choices[0].message.content)`;
           <code>:8004</code>
           ，而不是你电脑上的 <code>127.0.0.1</code>（除非本机同时跑了前后端）。然后强制刷新（Ctrl+Shift+R）。
         </dd>
-        <dt>问：Key 创建了 / 填了但好像没用？</dt>
+        <dt>问：存证账号创建了 / 填了但好像没用？</dt>
         <dd>
-          答：在「Key 管理」确认已 <strong>「复制 Key」</strong>；若未自动切换，点{" "}
-          <strong>「设为当前 Key」</strong>。再到「设置」→「通用」，确认{" "}
-          <strong>「API Key（X-Attest-Key）」</strong> 里是完整 <code>ata_…</code>，并点了{" "}
+          答：在「存证账号」确认已 <strong>「复制账号编号」</strong>；若未自动切换，点{" "}
+          <strong>「设为当前账号」</strong>。再到「设置」→「通用」，确认{" "}
+          <strong>「存证账号编号（X-Attest-Key）」</strong> 里是完整 <code>ata_…</code>，并点了{" "}
           <strong>「保存」</strong>。
           「Authorization」只是备忘。写代码时：<code>api_key</code> 用上游 <code>sk-</code>，
           <code>X-Attest-Key</code> 用 <code>ata_</code>，不要填反。
@@ -244,7 +253,7 @@ print(resp.choices[0].message.content)`;
         <dt>问：右上角「模拟一条调用」点不了？ / 为什么按钮是灰色的？</dt>
         <dd>
           答：可能没保存 Key，或角色是只读 <code>read_only</code>
-          。需要先在「设置」保存有效的 <code>ata_</code> Key，且角色为{" "}
+          。需要先在「设置」保存有效的存证账号编号，且角色为{" "}
           <code>read_write</code> 或 <code>admin</code>。把鼠标悬停在按钮上也可能看到提示。
         </dd>
         <dt>问：CORS / 跨域红字是什么？</dt>

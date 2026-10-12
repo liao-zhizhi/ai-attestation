@@ -38,3 +38,31 @@ button {
 a {
   color: var(--accent);
 }
+
+.guide-page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 28px 20px 72px;
+}
+
+.guide-page h1 {
+  margin: 10px 0 8px;
+  font-size: 28px;
+  letter-spacing: -0.03em;
+}
+
+.guide-page .lede {
+  margin: 0 0 18px;
+  color: #9eb2c7;
+  line-height: 1.6;
+}
+
+.guide-page .back {
+  margin: 0;
+}
+
+.guide-page .back a {
+  color: #9eb2c7;
+  text-decoration: none;
+  font-size: 13px;
+}

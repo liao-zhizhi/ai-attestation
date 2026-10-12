@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { formatDetail, parseApiError, withApiKey } from "@/lib/api";
+import { copyText, pythonProxySnippet } from "@/lib/snippet";
 
 type SubTab = "general" | "reports";
 
@@ -51,6 +52,8 @@ export function SettingsPanel({
   const [subMsg, setSubMsg] = useState<string | null>(null);
   const [smtpConfigured, setSmtpConfigured] = useState<boolean | null>(null);
   const [testBusy, setTestBusy] = useState(false);
+  const [snippetCopied, setSnippetCopied] = useState(false);
+  const [snippetMsg, setSnippetMsg] = useState<string | null>(null);
 
   const loadSub = useCallback(async () => {
     if (!apiKey) return;
@@ -149,6 +152,21 @@ export function SettingsPanel({
     }
   }
 
+  async function copySnippet() {
+    setSnippetMsg(null);
+    const text = pythonProxySnippet(proxyUrl, apiKey);
+    const ok = await copyText(text);
+    if (!ok) {
+      setSnippetMsg("复制失败。请确认浏览器允许剪贴板，或手动复制。");
+      return;
+    }
+    setSnippetCopied(true);
+    setTimeout(() => setSnippetCopied(false), 1500);
+    if (!apiKey.trim()) {
+      setSnippetMsg("已复制。编号还是空的，请先到「存证账号」创建，或在上面填好再复制一次。");
+    }
+  }
+
   const tabs: { id: SubTab; label: string }[] = [
     { id: "general", label: "通用" },
     { id: "reports", label: "报告订阅" },
@@ -173,7 +191,7 @@ export function SettingsPanel({
       {tab === "general" && (
         <div className="pane">
           <label>
-            API Key（X-Attest-Key）
+            存证账号编号（X-Attest-Key）
             <input
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
@@ -182,7 +200,7 @@ export function SettingsPanel({
             />
           </label>
           <label>
-            Authorization（上游厂商 Key，仅本机备忘）
+            Authorization（上游厂商密钥，仅本机备忘）
             <input
               value={authorization}
               onChange={(e) => setAuthorization(e.target.value)}
@@ -198,12 +216,18 @@ export function SettingsPanel({
             <button type="button" className="accent" onClick={onSaveKey} disabled={busy}>
               保存
             </button>
+            <button type="button" className="accent" onClick={() => void copySnippet()}>
+              {snippetCopied ? "已复制配置" : "一键复制配置"}
+            </button>
             <button type="button" onClick={onCopyProxy}>
               {copied ? "已复制" : "复制代理 URL"}
             </button>
           </div>
+          {snippetMsg && <p className="msg">{snippetMsg}</p>}
           <p className="hint">
-            「API Key」填左侧「Key」页生成的 <code>ata_…</code>，保存后用于打开仪表盘。
+            「存证账号编号」填左侧「存证账号」页生成的 <code>ata_…</code>，保存后用于打开仪表盘。
+            点「一键复制配置」会把当前编号和代理地址写进一段 Python 代码（上游密钥仍要改成{" "}
+            <code>sk-…</code>）。
             「Authorization」只保存在本浏览器，方便你对照写 SDK；真正调用代理时请在代码里传上游{" "}
             <code>sk-…</code>，网页不会替你转发该字段。
           </p>

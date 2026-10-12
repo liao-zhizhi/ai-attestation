@@ -24,7 +24,7 @@ type Props = {
 type Item = { id: NavId; label: string; itemKey: string };
 
 const ONBOARD: Item[] = [
-  { id: "keys", label: "Key 管理", itemKey: "onboard-keys" },
+  { id: "keys", label: "存证账号", itemKey: "onboard-keys" },
   { id: "settings", label: "设置", itemKey: "onboard-settings" },
   { id: "calls", label: "API 调用", itemKey: "onboard-calls" },
   { id: "research", label: "见证", itemKey: "onboard-research" },
@@ -88,7 +88,7 @@ export function Sidebar({
       <div className="foot">
         {hasKey ? (
           <div className="k mono" title={keyTrim}>
-            当前 Key: {masked}
+            当前账号: {masked}
           </div>
         ) : (
           <button
@@ -96,7 +96,7 @@ export function Sidebar({
             className="nokey"
             onClick={() => onNavigate("keys")}
           >
-            未设置 Key，去创建
+            还没有存证账号，去创建
           </button>
         )}
         <div className="url mono" title={proxyUrl}>

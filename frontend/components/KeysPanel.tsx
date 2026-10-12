@@ -49,11 +49,13 @@ export function KeysPanel({ apiBase, apiKey, canAdmin, onActivateKey }: Props) {
     loadKeys().catch(() => undefined);
   }, [loadKeys]);
 
+  function autoLabel() {
+    const stamp = new Date().toLocaleString("zh-CN", { hour12: false });
+    return `存证账号 ${stamp}`;
+  }
+
   async function createKey() {
-    if (!name.trim()) {
-      setMsg("请先输入名称");
-      return;
-    }
+    const label = name.trim() || autoLabel();
     setBusy(true);
     setMsg(null);
     try {
@@ -63,7 +65,7 @@ export function KeysPanel({ apiBase, apiKey, canAdmin, onActivateKey }: Props) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             api_key: apiKey,
-            name: name.trim(),
+            name: label,
             role: newRole,
           }),
         });
@@ -74,7 +76,7 @@ export function KeysPanel({ apiBase, apiKey, canAdmin, onActivateKey }: Props) {
         }
         const k = d.key?.api_key as string | undefined;
         if (k) setCreatedOnce(k);
-        setMsg("已创建。完整 Key 仅显示一次，不会自动替换你当前登录用的 Key。");
+        setMsg("已创建。账号编号只完整显示一次，不会自动替换你当前正在用的账号。");
         setName("");
         await loadKeys();
         return;
@@ -83,7 +85,7 @@ export function KeysPanel({ apiBase, apiKey, canAdmin, onActivateKey }: Props) {
       const r = await fetch(`${apiBase}/v1/keys`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ label: name.trim() }),
+        body: JSON.stringify({ label }),
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok || typeof d.api_key !== "string") {
@@ -92,12 +94,12 @@ export function KeysPanel({ apiBase, apiKey, canAdmin, onActivateKey }: Props) {
       }
       setCreatedOnce(d.api_key);
       setName("");
-      // First key: activate automatically. Extra keys: wait for user confirm.
+      // First account: activate automatically. Extra accounts: wait for user confirm.
       if (!apiKey) {
         onActivateKey?.(d.api_key);
-        setMsg("已创建并设为当前 Key");
+        setMsg("已创建并设为当前存证账号");
       } else {
-        setMsg("已创建。如需切换，请点「设为当前 Key」（会替换当前会话）。");
+        setMsg("已创建。如需切换，请点「设为当前账号」（会替换当前会话）。");
       }
     } finally {
       setBusy(false);
@@ -127,16 +129,16 @@ export function KeysPanel({ apiBase, apiKey, canAdmin, onActivateKey }: Props) {
 
   return (
     <section className="kp">
-      <h2>API Key</h2>
+      <h2>创建一个存证账号</h2>
       <p className="lead">
-        在这里创建见证层 Key（格式 <code>ata_xxxxxx</code>）。创建成功后请立刻复制保存。
+        点一下就行。编号会自动生成，并保存在这台浏览器里。你不需要理解它的格式。换电脑时，把编号复制走。
       </p>
 
       <div className="create">
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="输入名称，例如：我的测试"
+          placeholder="账号名称（可不填，不填就自动生成）"
           spellCheck={false}
         />
         {canAdmin && (
@@ -147,13 +149,13 @@ export function KeysPanel({ apiBase, apiKey, canAdmin, onActivateKey }: Props) {
           </select>
         )}
         <button type="button" className="accent" onClick={createKey} disabled={busy}>
-          {busy ? "创建中…" : "创建"}
+          {busy ? "创建中…" : "创建存证账号"}
         </button>
       </div>
 
       {createdOnce && (
         <div className="once">
-          <div className="label">新 Key（仅完整显示一次，请立刻复制）：</div>
+          <div className="label">账号编号（只完整显示一次，请立刻复制）：</div>
           <code className="mono">{createdOnce}</code>
           <div className="row">
             <button
@@ -167,17 +169,17 @@ export function KeysPanel({ apiBase, apiKey, canAdmin, onActivateKey }: Props) {
                 }
               }}
             >
-              复制 Key
+              复制账号编号
             </button>
             <button
               type="button"
               className="accent"
               onClick={() => {
                 onActivateKey?.(createdOnce);
-                setMsg("已设为当前 Key（请到「设置」确认并保存）");
+                setMsg("已设为当前账号（请到「设置」确认并保存）");
               }}
             >
-              设为当前 Key
+              设为当前账号
             </button>
           </div>
         </div>
@@ -187,9 +189,9 @@ export function KeysPanel({ apiBase, apiKey, canAdmin, onActivateKey }: Props) {
 
       {canAdmin && (
         <>
-          <h3>已有 Key（刷新后通常仅显示脱敏）</h3>
+          <h3>已有账号（刷新后通常只显示一部分）</h3>
           {keys.length === 0 ? (
-            <p className="msg">暂无列表（需管理员身份且当前 API Key 有效）</p>
+            <p className="msg">暂无列表（需要管理员身份，且当前存证账号有效）</p>
           ) : (
             <ul className="klist">
               {keys.map((k) => (
