@@ -8,6 +8,7 @@ const homeErr = document.getElementById("home-err");
 const list = document.getElementById("list");
 const empty = document.getElementById("empty");
 const who = document.getElementById("who");
+const syncNote = document.getElementById("sync-note");
 const baseInput = document.getElementById("base");
 const logoutBtn = document.getElementById("logout");
 
@@ -140,6 +141,9 @@ document.getElementById("login").addEventListener("click", async () => {
   }
   await chrome.storage.session.remove("pendingEmail");
   showHome(res.email || pendingEmail);
+  syncNote.textContent = res.synced
+    ? "编号已写入网站。打开 ai-attestation.com 会使用同一个存证账号。"
+    : `登录成功，但没能写入网站：${res.syncError || "请再登录一次"}`;
   await refresh();
 });
 
@@ -157,6 +161,7 @@ logoutBtn.addEventListener("click", async () => {
   codeInput.disabled = true;
   document.getElementById("login").disabled = true;
   codeHint.hidden = true;
+  syncNote.textContent = "";
   showGuest();
 });
 

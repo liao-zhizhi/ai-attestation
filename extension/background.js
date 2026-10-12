@@ -25,6 +25,76 @@ async function sessionState() {
   };
 }
 
+const SITE_URL = "https://ai-attestation.com/";
+const SITE_MATCH = "https://ai-attestation.com/*";
+/** 与 frontend/lib/account.ts 的 ACCOUNT_STORAGE_KEY 相同。网站用这一项作为当前账号。 */
+const SITE_ACCOUNT_KEY = "ata_mvp_api_key";
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function waitForTabComplete(tabId) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+      reject(new Error("打开网站超时"));
+    }, 20000);
+    function finish() {
+      clearTimeout(timer);
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+      resolve();
+    }
+    function onUpdated(id, info) {
+      if (id === tabId && info.status === "complete") finish();
+    }
+    chrome.tabs.onUpdated.addListener(onUpdated);
+    chrome.tabs.get(tabId).then((tab) => {
+      if (tab.status === "complete") finish();
+    }).catch((err) => {
+      clearTimeout(timer);
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+      reject(err);
+    });
+  });
+}
+
+function writeSiteAccount(tabId, apiKey) {
+  return chrome.scripting.executeScript({
+    target: { tabId },
+    world: "MAIN",
+    args: [SITE_ACCOUNT_KEY, apiKey],
+    func: (storageKey, accountId) => {
+      localStorage.setItem(storageKey, String(accountId || "").trim());
+    },
+  });
+}
+
+/** 登录后把编号写入网站源站的 localStorage。已打开的页面会刷新一次以读到当前账号。 */
+async function syncKeyToSite(apiKey) {
+  const key = String(apiKey || "").trim();
+  if (key.length < 8) throw new Error("编号无效");
+  const existing = await chrome.tabs.query({ url: SITE_MATCH });
+  let createdId = null;
+  let tabIds = existing.map((tab) => tab.id).filter((id) => id != null);
+  if (!tabIds.length) {
+    const tab = await chrome.tabs.create({ url: SITE_URL, active: false });
+    createdId = tab.id;
+    await waitForTabComplete(createdId);
+    tabIds = [createdId];
+  }
+  for (const tabId of tabIds) {
+    await writeSiteAccount(tabId, key);
+  }
+  if (createdId != null) {
+    await delay(600);
+    await writeSiteAccount(createdId, key);
+    await chrome.tabs.remove(createdId);
+    return;
+  }
+  await Promise.all(tabIds.map((tabId) => chrome.tabs.reload(tabId)));
+}
+
 async function rememberHash(hash) {
   const state = await sessionState();
   const next = state.seenHashes.filter((item) => item !== hash);
@@ -59,7 +129,15 @@ async function handle(msg) {
     const state = await sessionState();
     const apiKey = await ataCreateAccount(state.apiBase, email);
     await storageSet({ apiKey, email });
-    return { ok: true, email };
+    let synced = false;
+    let syncError = "";
+    try {
+      await syncKeyToSite(apiKey);
+      synced = true;
+    } catch (err) {
+      syncError = err instanceof Error ? err.message : "没能写入网站";
+    }
+    return { ok: true, email, synced, syncError };
   }
   if (msg.type === "list") {
     const state = await sessionState();
